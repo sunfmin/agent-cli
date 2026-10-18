@@ -94,8 +94,15 @@ Every function of every pure crate is checked by Flux refinement types.
 ## The gate
 
 One `gate.sh` is the definition of "may land", the same locally and in CI:
-`cargo fmt --check`, `clippy -D warnings`, `cargo nextest run`, `./verify.sh`.
+`cargo fmt --check`, `./verify.sh`, `clippy -D warnings`, `cargo nextest run`.
 It pins its toolchain and trusts nobody's `PATH`.
+
+- Flux runs alone, before the tests: beside them it shares the cores, and its
+  time measures them.
+- It runs with `FLUXFLAGS="-Ftimings -Ffixpoint-timeout=20 -Fcatch-bugs"`: a
+  solver query past twenty seconds fails the gate naming its function, every
+  slow one is named in one run, and the slowest are reported. No limit on the
+  whole run: one cut short names nothing.
 
 ## Release
 
