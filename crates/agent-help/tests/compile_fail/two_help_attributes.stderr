@@ -1,0 +1,5 @@
+error: variant `NameTaken` has two #[help]: keep one
+ --> tests/compile_fail/two_help_attributes.rs:6:5
+  |
+6 |     #[help = "Two."]
+  |     ^^^^^^^^^^^^^^^^
