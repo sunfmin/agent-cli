@@ -86,7 +86,9 @@ struct RegisteredTopic {
 }
 
 /// A table, as [`Help::table`] registered it.
-#[derive(Clone, Debug)]
+// `Copy`, so the derived `Clone` copies it whole: one that clones the `fn`
+// field crashes Flux (`invalid builtin assoc reft ... Clone ... "cloned"`).
+#[derive(Clone, Copy, Debug)]
 struct RegisteredTable {
     name: &'static str,
     /// Its [`Table::markdown`].
@@ -321,11 +323,11 @@ impl Help {
     fn expand(&self, text: &str, at: &str, in_table: bool, faults: &mut Faults) -> String {
         let mut expanded = String::with_capacity(text.len());
         let mut rest = text;
-        while let Some(start) = rest.find('{') {
-            expanded.push_str(&rest[..start]);
-            let Some((placeholder, after)) = Placeholder::parse(&rest[start..]) else {
+        while let Some((before, inside)) = rest.split_once('{') {
+            expanded.push_str(before);
+            let Some((placeholder, after)) = Placeholder::parse(inside) else {
                 expanded.push('{');
-                rest = &rest[start + 1..];
+                rest = inside;
                 continue;
             };
             rest = after;
@@ -384,10 +386,11 @@ enum Placeholder<'a> {
 }
 
 impl<'a> Placeholder<'a> {
-    /// The placeholder `text` starts with, and the text after it. A name is
-    /// one or more characters, none of them whitespace or a brace.
+    /// The placeholder whose opening brace `text` follows, and the text after
+    /// it. A name is one or more characters, none of them whitespace or a
+    /// brace.
     fn parse(text: &'a str) -> Option<(Self, &'a str)> {
-        let (kind, rest) = text.strip_prefix('{')?.split_once(':')?;
+        let (kind, rest) = text.split_once(':')?;
         let (name, after) = rest.split_once('}')?;
         if name.is_empty() || name.contains(|c: char| c.is_whitespace() || c == '{') {
             return None;

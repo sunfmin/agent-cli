@@ -28,7 +28,7 @@ export PATH RUSTUP_TOOLCHAIN
 #   fixpoint    reports its version and its whole commit: both are compared.
 #   z3          reports its version, which is compared, and nothing of its
 #               build.
-flux_rev=$(sed -n 's/^flux-rs = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
+flux_rev=$(sed -n 's/^flux-core = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
 fixpoint_pin=$(sed -n 's/^fixpoint = "\(.*\)"$/\1/p' Cargo.toml)
 z3_pin=$(sed -n 's/^z3 = "\(.*\)"$/\1/p' Cargo.toml)
 if [ -z "$flux_rev" ] || [ -z "$fixpoint_pin" ] || [ -z "$z3_pin" ]; then

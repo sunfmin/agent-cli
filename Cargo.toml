@@ -11,14 +11,13 @@ repository = "https://github.com/sunfmin/agent-cli"
 # any other. Flux has no releases, and spec crates from another revision fail
 # in ways that look like the crate's own bug.
 [workspace.dependencies]
-# Refinement attributes (`#[spec]`, `#[refined_by]`, ...) for a crate that
-# writes specs; they expand to nothing under a plain `cargo build`.
-flux-rs = { git = "https://github.com/flux-rs/flux.git", rev = "b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9" }
-# Flux's refinements of the standard library, at the same revision: without
-# them a slice has no length Flux knows of, and an index into one goes
-# unchecked. Both are empty under a plain `cargo build`.
+# Flux's refinements of the standard library: without them a slice has no
+# length Flux knows of, and an index into one goes unchecked. Both are empty
+# under a plain `cargo build`.
 flux-alloc = { git = "https://github.com/flux-rs/flux.git", rev = "b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9" }
 flux-core = { git = "https://github.com/flux-rs/flux.git", rev = "b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9" }
+# A crate that writes specs adds `flux-rs`, the refinement attributes, here
+# at the same revision; verify.sh reads the revision from `flux-core`.
 
 # The rest of the checker ./verify.sh runs, beside the Flux revision above. It
 # refuses any other: each value is what the tool reports about itself, to
