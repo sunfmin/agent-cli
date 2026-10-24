@@ -27,3 +27,11 @@ _Avoid_: registry, catalog
 **Entry**:
 One member of a table: its name, as a tool prints it, and its help.
 _Avoid_: item, row
+
+**Group**:
+Who runs a command, such as "Run by the operator": the manual lists commands under it. A subcommand declares it where it is defined.
+_Avoid_: category, section
+
+**Placeholder**:
+`{table:<name>}` or `{const:<NAME>}` written inside a help, standing for a table or a value the tool registered, so a fact is written once.
+_Avoid_: variable, macro, template
