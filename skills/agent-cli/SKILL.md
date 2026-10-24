@@ -84,6 +84,9 @@ its crate docs say how.
 - A command's help says: when to run it, what it reads and writes, what it
   answers (every key), what it may refuse, what trips you up. Who runs it is
   its group, declared where it is defined.
+- A command's or topic's help is written as a page of its own: its sections
+  are `##` headings, the title left to the manual, which nests them under
+  wherever it places that help.
 - A number or a code list is written once, in code, and placed in help by a
   placeholder. A message names a topic by its reference, never by its name
   written out.

@@ -79,6 +79,15 @@ use crate::{Table, Topic, TopicRef, item};
 /// - A command's text is its `long_about`, else its `about`. With clap's
 ///   derive, write `#[command(verbatim_doc_comment)]` so its doc comment is
 ///   kept as written; without it clap rewraps the text.
+/// - A command's or topic's text is written as a page of its own: its
+///   sections are `##` headings, under the `#` title the manual writes. Asked
+///   for alone, it is kept as written; in the whole manual, under
+///   ``#### `tool plan create` `` or ``### `tool help sign-in` ``, each
+///   heading moves down so `##` sits one level below that heading, a table's
+///   help with the text it is in. Lines in a code block fenced with
+///   ```` ``` ```` or `~~~` are not headings. A `#` heading in a text is an
+///   error, and so is one the manual would move past `######`: write a
+///   command's sections at most `###` deep, a topic's at most `####`.
 /// - Every subcommand declares its group, who runs it, where it is defined:
 ///   `#[command(next_help_heading = "Run by the operator")]`. A nested one
 ///   is in its parent's group unless it declares its own; a subcommand with
@@ -228,8 +237,9 @@ impl Help {
             .into());
         };
         let mut faults = Faults::default();
-        let text = self.topic_text(topic, &mut faults);
-        faults.or(format!("# `{}`\n\n{text}", topic.reference))
+        let text = self.topic_text(topic, PAGE, &mut faults);
+        let title = heading(PAGE, &format!("`{}`", topic.reference));
+        faults.or(format!("{title}\n{text}"))
     }
 
     /// The tool's command, every `--help` and `-h` in it answering with this
@@ -292,8 +302,8 @@ impl Help {
     /// The whole manual of `tree`, [`Help::tree`].
     fn whole(&self, tree: &Command, faults: &mut Faults) -> String {
         let root = tree.get_name();
-        let mut manual = format!("# `{root}`\n");
-        manual.push_str(&self.body(&format!("`{root}`"), tree, 2, faults));
+        let mut manual = heading(PAGE, &format!("`{root}`"));
+        manual.push_str(&self.body(&format!("`{root}`"), tree, PAGE, faults));
 
         let listed = listed(tree);
         let mut groups: Vec<&str> = Vec::new();
@@ -312,13 +322,10 @@ impl Help {
         for group in groups {
             manual.push_str(&format!("\n### {group}\n"));
             for command in listed.iter().filter(|c| c.group == Some(group)) {
-                manual.push_str(&format!("\n#### `{}`\n", command.title));
-                manual.push_str(&self.body(
-                    &format!("`{}`", command.title),
-                    command.command,
-                    5,
-                    faults,
-                ));
+                let at = format!("`{}`", command.title);
+                manual.push('\n');
+                manual.push_str(&heading(COMMAND, &at));
+                manual.push_str(&self.body(&at, command.command, COMMAND, faults));
             }
         }
 
@@ -334,34 +341,35 @@ impl Help {
             }
         }
         for topic in &self.topics {
-            manual.push_str(&format!("\n### `{}`\n\n", topic.reference));
-            manual.push_str(&self.topic_text(topic, faults));
+            manual.push('\n');
+            manual.push_str(&heading(TOPIC, &format!("`{}`", topic.reference)));
+            manual.push('\n');
+            manual.push_str(&self.topic_text(topic, TOPIC, faults));
         }
         manual
     }
 
     /// One command's answer: its heading, then its body.
     fn alone(&self, title: &str, command: &Command, faults: &mut Faults) -> String {
-        format!(
-            "# `{title}`\n{}",
-            self.body(&format!("`{title}`"), command, 2, faults)
-        )
+        let at = format!("`{title}`");
+        let body = self.body(&at, command, PAGE, faults);
+        format!("{}{body}", heading(PAGE, &at))
     }
 
-    /// What the manual says of one command of [`Help::tree`], under its
-    /// heading: its text, then its usage and its arguments, each under a
-    /// heading `depth` deep. Starts with a blank line and ends with a newline.
-    fn body(&self, at: &str, command: &Command, depth: usize, faults: &mut Faults) -> String {
-        let heading = "#".repeat(depth);
+    /// What the manual says of one command of [`Help::tree`] under its
+    /// heading, of level `under`: its text, then its usage and its arguments,
+    /// each a `##` section as on a page of its own, every heading [`nest`]ed.
+    /// Starts with a blank line and ends with a newline.
+    fn body(&self, at: &str, command: &Command, under: usize, faults: &mut Faults) -> String {
         let mut body = self.text(at, command, faults);
         let usage = command.clone().render_usage().to_string();
         let usage = usage.strip_prefix("Usage: ").unwrap_or(&usage);
-        body.push_str(&format!("\n{heading} Usage\n\n```\n{usage}\n```\n"));
+        body.push_str(&format!("\n## Usage\n\n```\n{usage}\n```\n"));
         let arguments = self.arguments(at, command, faults);
         if !arguments.is_empty() {
-            body.push_str(&format!("\n{heading} Arguments\n\n{arguments}"));
+            body.push_str(&format!("\n## Arguments\n\n{arguments}"));
         }
-        body
+        nest(&body, under, at, faults)
     }
 
     /// A command's visible arguments as a Markdown list, in the order
@@ -432,7 +440,9 @@ impl Help {
         }
     }
 
-    fn topic_text(&self, topic: &RegisteredTopic, faults: &mut Faults) -> String {
+    /// A topic's text under a heading of level `under`, placeholders replaced
+    /// and headings nested, ended by a newline.
+    fn topic_text(&self, topic: &RegisteredTopic, under: usize, faults: &mut Faults) -> String {
         let tool = self.command.get_name();
         if topic.reference.binary() != tool {
             faults.push(Fault::ForeignTopic {
@@ -441,10 +451,13 @@ impl Help {
             });
         }
         let at = topic.at();
-        format!(
-            "{}\n",
-            self.expand(topic.markdown, &at, false, faults).trim_end()
-        )
+        let text = nest(
+            &self.expand(topic.markdown, &at, false, faults),
+            under,
+            &at,
+            faults,
+        );
+        format!("{}\n", text.trim_end())
     }
 
     /// `text` with each `{table:<name>}` and `{const:<NAME>}` replaced; `at`
@@ -627,7 +640,7 @@ pub fn code_blocks(help: &Help, language: &str) -> Vec<CodeBlock> {
         }
     }
     for topic in &help.topics {
-        texts.push((topic.at(), help.topic_text(topic, &mut faults)));
+        texts.push((topic.at(), help.topic_text(topic, PAGE, &mut faults)));
     }
     let mut blocks = Vec::new();
     for (at, text) in texts {
@@ -669,30 +682,153 @@ fn links(text: &str) -> impl Iterator<Item = &str> {
     })
 }
 
-/// The code of each block fenced with backticks in `markdown` whose language
-/// is `language`, each line less the fence's indent.
+/// The level of the heading an answer gives the text it asks for alone: a
+/// page's title.
+const PAGE: usize = 1;
+/// The level of a command's heading in the whole manual.
+const COMMAND: usize = 4;
+/// The level of a topic's heading in the whole manual.
+const TOPIC: usize = 3;
+/// The deepest heading Markdown has.
+const DEEPEST: usize = 6;
+
+/// A heading of `level` naming `title`, ended by a newline.
+fn heading(level: usize, title: &str) -> String {
+    format!("{} {title}\n", "#".repeat(level))
+}
+
+/// `text`, written as a page of its own (its sections from `##`), placed
+/// under a heading of level `under`: each heading outside a fenced code block
+/// moved down `under - 1` levels, so `##` sits one below `under`. A `#`
+/// heading, the title, and one moved past `######` are faults naming `at`.
+fn nest(text: &str, under: usize, at: &str, faults: &mut Faults) -> String {
+    let shift = under.saturating_sub(PAGE);
+    let mut nested = String::with_capacity(text.len());
+    let mut fence: Option<Fence> = None;
+    for line in text.lines() {
+        match &fence {
+            Some(open) => {
+                if open.closed_by(line) {
+                    fence = None;
+                }
+            }
+            None => fence = Fence::opened_by(line),
+        }
+        match (&fence, atx(line)) {
+            (None, Some((indent, level))) => {
+                let (before, run) = line.split_at(indent);
+                let after = &run[level..];
+                if level == PAGE {
+                    faults.push(Fault::TitleInText {
+                        heading: line.trim().to_owned(),
+                        at: at.to_owned(),
+                    });
+                }
+                match level.checked_add(shift).filter(|&l| l <= DEEPEST) {
+                    Some(moved) => {
+                        nested.push_str(before);
+                        nested.push_str(&"#".repeat(moved));
+                        nested.push_str(after);
+                    }
+                    None => {
+                        faults.push(Fault::HeadingTooDeep {
+                            heading: line.trim().to_owned(),
+                            at: at.to_owned(),
+                            deepest: DEEPEST.saturating_sub(shift),
+                        });
+                        nested.push_str(line);
+                    }
+                }
+            }
+            _ => nested.push_str(line),
+        }
+        nested.push('\n');
+    }
+    nested
+}
+
+/// The indent of the ATX heading `line` opens and its level, the length of
+/// its `#` run; none when `line` opens no heading. A heading is indented by
+/// at most three spaces, and its run of one to six `#` ends the line or is
+/// followed by a space or a tab.
+fn atx(line: &str) -> Option<(usize, usize)> {
+    let indent = leading(line, b' ');
+    if indent > 3 {
+        return None;
+    }
+    let run = &line[indent..];
+    let level = leading(run, b'#');
+    if level == 0 || level > DEEPEST {
+        return None;
+    }
+    match run[level..].bytes().next() {
+        None | Some(b' ' | b'\t') => Some((indent, level)),
+        Some(_) => None,
+    }
+}
+
+/// The opening line of a fenced code block: three or more backticks or
+/// tildes.
+struct Fence {
+    /// The spaces before it.
+    indent: usize,
+    /// `` ` `` or `~`.
+    mark: u8,
+    /// How many marks it has.
+    length: usize,
+}
+
+impl Fence {
+    /// The fence `line` opens, none when it opens none.
+    fn opened_by(line: &str) -> Option<Self> {
+        let indent = leading(line, b' ');
+        let mark = line.as_bytes().get(indent).copied()?;
+        if mark != b'`' && mark != b'~' {
+            return None;
+        }
+        let length = leading(&line[indent..], mark);
+        (length >= 3).then_some(Self {
+            indent,
+            mark,
+            length,
+        })
+    }
+
+    /// The language its info string names, its first word: `rust,no_run`
+    /// is `rust`.
+    fn language<'a>(&self, opening: &'a str) -> Option<&'a str> {
+        let info = opening.trim_start_matches(' ');
+        let info = info.trim_start_matches(self.mark as char);
+        info.split([',', ' ']).next()
+    }
+
+    /// Whether `line` closes the block: only marks of its kind, at least as
+    /// many as it opened with.
+    fn closed_by(&self, line: &str) -> bool {
+        let content = line.trim_start_matches(' ').trim_end();
+        content.len() >= self.length && content.bytes().all(|b| b == self.mark)
+    }
+}
+
+/// The code of each fenced block in `markdown` whose language is `language`,
+/// each line less the fence's indent.
 fn fenced(markdown: &str, language: &str) -> Vec<String> {
     let mut blocks = Vec::new();
     let mut lines = markdown.lines();
     while let Some(line) = lines.next() {
-        let indent = leading(line, b' ');
-        let opening = &line[indent..];
-        let ticks = leading(opening, b'`');
-        if ticks < 3 {
+        let Some(fence) = Fence::opened_by(line) else {
             continue;
-        }
-        let info = &opening[ticks..];
+        };
         let mut code = String::new();
         for line in lines.by_ref() {
-            let content = line.trim_start_matches(' ');
-            if content.trim_end().len() >= ticks && content.trim_end().chars().all(|c| c == '`') {
+            if fence.closed_by(line) {
                 break;
             }
-            let strip = leading(line, b' ').min(indent);
+            let strip = leading(line, b' ').min(fence.indent);
             code.push_str(&line[strip..]);
             code.push('\n');
         }
-        if info.split([',', ' ']).next() == Some(language) {
+        if fence.language(line) == Some(language) {
             blocks.push(code);
         }
     }
@@ -849,6 +985,24 @@ pub enum Fault {
         /// The commands there are, hidden ones left out.
         commands: Vec<String>,
     },
+    /// A `#` heading in a command's or topic's text, where the manual
+    /// writes the title.
+    TitleInText {
+        /// The heading, as written.
+        heading: String,
+        /// Where it is written.
+        at: String,
+    },
+    /// A heading in a command's or topic's text that the manual would move
+    /// past `######`.
+    HeadingTooDeep {
+        /// The heading, as written.
+        heading: String,
+        /// Where it is written.
+        at: String,
+        /// The deepest level it may be written at there.
+        deepest: usize,
+    },
     /// A topic asked for that does not exist.
     UnknownTopic {
         topic: String,
@@ -902,6 +1056,21 @@ impl fmt::Display for Fault {
                 "topic `{}` is shown by `{reference}`, but this tool is `{tool}`: \
                  name it `agent_help::binary!(\"{tool}\")`",
                 reference.topic()
+            ),
+            Fault::TitleInText { heading, at } => write!(
+                f,
+                "`{heading}` in {at} is a title, and the manual writes the title: \
+                 start the text's sections from `##`"
+            ),
+            Fault::HeadingTooDeep {
+                heading,
+                at,
+                deepest,
+            } => write!(
+                f,
+                "`{heading}` in {at} is nested past `######` in the manual: \
+                 write it `{}` at most",
+                "#".repeat(*deepest)
             ),
             Fault::UnknownCommand { command, commands } => write!(
                 f,

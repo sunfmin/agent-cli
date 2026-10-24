@@ -6,8 +6,9 @@ use std::fmt;
 ///
 /// Derive it on an empty struct. Its name is `#[topic(name = "...")]`, in
 /// kebab-case; its Markdown is its doc comment, as written, most often a file
-/// of its own. The crate names its binary once, at its root, with
-/// [`binary!`](crate::binary):
+/// of its own, whose sections are `##` headings under the title the manual
+/// writes (see [`Help`](struct@crate::Help)). The crate names its binary
+/// once, at its root, with [`binary!`](crate::binary):
 ///
 /// ```
 /// use agent_help::Topic;
