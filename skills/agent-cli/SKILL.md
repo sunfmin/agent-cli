@@ -32,7 +32,8 @@ One cargo workspace.
 
 A crate is pure or it is not: no crate is mostly pure.
 
-Dependencies stay few: `clap` (derive, env), `anyhow`, `serde`, `serde_json`.
+Dependencies stay few: `clap` (derive, env), `agent-help`, `anyhow`, `serde`,
+`serde_json`.
 Reach other systems through their own CLIs, one module per command, the only
 place that builds its command line. No SDKs, no tokens handled.
 
@@ -62,14 +63,37 @@ Every function of every pure crate is checked by Flux refinement types.
 
 ## Help is the only manual
 
-- `--help` is a guide; `-h` is one screen. Both are text files embedded with
-  `include_str!`, one per subcommand.
-- The guide says: what it is, what it needs, what to run first, what a command
-  answers, the commands grouped by who runs them, the rules to know first.
-- A subcommand's help says: when to run it, who runs it, what it reads and
-  writes, what it answers (every key), what trips you up.
+Written with [agent-help](https://github.com/sunfmin/agent-cli/tree/main/crates/agent-help);
+its crate docs say how.
+
+- Help is Markdown, written as doc comments on the type that is each fact's
+  one home: a subcommand's clap struct or variant, a refusal code's enum
+  variant, a topic's type. It is assembled when the tool is built; nothing is
+  copied by hand.
+- The types are the registries: clap's command tree and an enum's variants,
+  never a link-time collection. A fact left out is a failure, never a silent
+  gap: a variant without help does not compile, a command without text fails
+  `check`.
+- The answer is the Markdown as written: no rendering, no wrapping, no width.
+  Write each paragraph on one line.
+- `--help` answers the whole manual, `<command> --help` that command; `-h`
+  answers what `--help` does. What belongs to no command (how to sign in, a
+  concept every command shares) is a topic: `help <topic>`.
+- The manual says: what it is, what it needs, what to run first, the commands
+  grouped by who runs them, the rules to know first.
+- A command's help says: when to run it, what it reads and writes, what it
+  answers (every key), what it may refuse, what trips you up. Who runs it is
+  its group, declared where it is defined.
+- A number or a code list is written once, in code, and placed in help by a
+  placeholder. A message names a topic by its reference, never by its name
+  written out.
+- Help names nothing its reader cannot open: no ADR numbers, no repository
+  paths, no internal documents. The reader has the binary and its help,
+  nothing else.
 - The shipped SKILL.md is a few lines that send the agent to `--help`.
-- Help is tested: the commands it names are exactly the commands that exist.
+- `agent_help::check` is the one test that keeps the manual whole: every
+  command has text and a group, every placeholder and topic link names
+  something.
 
 ## Nothing in the process
 
@@ -133,6 +157,7 @@ Module and interface comments: see `comments-first`.
 - [ ] No pure crate does I/O; Flux says `0 trusted; 0 ignored`
 - [ ] One JSON object per command; failure is `{"error"}` and non-zero
 - [ ] An agent that never saw the tool runs its first command from `--help` alone
+- [ ] `agent_help::check` passes in a test, and help names nothing the reader cannot open
 - [ ] Every error carries the line that fixes it
 - [ ] Killing it mid-run and running it again loses nothing
 - [ ] The installed `--version` equals the tag
