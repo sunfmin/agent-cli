@@ -128,3 +128,12 @@ fn refuse(error: &str) -> ExitCode {
     println!("{{\"error\": \"{error}\"}}");
     ExitCode::FAILURE
 }
+
+#[cfg(test)]
+mod tests {
+    /// The one test a tool needs for its manual.
+    #[test]
+    fn the_manual_is_whole() {
+        agent_help::check(&super::help()).unwrap();
+    }
+}

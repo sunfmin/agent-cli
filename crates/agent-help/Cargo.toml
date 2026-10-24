@@ -10,6 +10,11 @@ repository.workspace = true
 agent-help-derive = { version = "0.1.0", path = "../agent-help-derive" }
 clap = { version = "4.5", default-features = false, features = ["std"] }
 
+[[example]]
+name = "plans"
+# Its test, `the_manual_is_whole`, runs with the crate's.
+test = true
+
 [dev-dependencies]
 clap = { version = "4.5", features = ["derive"] }
 trybuild = "1"

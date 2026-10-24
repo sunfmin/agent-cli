@@ -68,7 +68,11 @@ use crate::{Table, Topic, TopicRef};
 ///   registered under that name: a number is written once, in code. A table's
 ///   help may name constants, but not tables. One naming nothing registered
 ///   is an error.
+/// - Inside any text, `[...](help:<topic>)` links to a topic; one naming no
+///   registered topic is an error. Two topics may not share a name.
 /// - Hidden commands are left out of the manual.
+/// - [`check`] is the one test a tool needs to keep this manual whole, and
+///   [`code_blocks`] hands it the manual's examples to compile.
 /// - Each answer that finds faults is an [`Error`] naming every one of them.
 #[derive(Clone, Debug)]
 pub struct Help {
@@ -83,6 +87,13 @@ pub struct Help {
 struct RegisteredTopic {
     reference: TopicRef,
     markdown: &'static str,
+}
+
+impl RegisteredTopic {
+    /// Where its text is written, for a fault or a code block to name.
+    fn at(&self) -> String {
+        format!("topic `{}`", self.reference.topic())
+    }
 }
 
 /// A table, as [`Help::table`] registered it.
@@ -250,6 +261,14 @@ impl Help {
         if !self.topics.is_empty() {
             manual.push_str("\n## Topics\n");
         }
+        for (i, topic) in self.topics.iter().enumerate() {
+            let name = topic.reference.topic();
+            if self.topics[..i].iter().any(|t| t.reference.topic() == name) {
+                faults.push(Fault::DuplicateTopic {
+                    topic: name.to_owned(),
+                });
+            }
+        }
         for topic in &self.topics {
             manual.push_str(&format!("\n### `{}`\n\n", topic.reference));
             manual.push_str(&self.topic_text(topic, faults));
@@ -292,13 +311,28 @@ impl Help {
     /// A command's text, placeholders replaced, as a block that starts with
     /// a blank line and ends with a newline; empty when it has none.
     fn text(&self, at: &str, command: &Command, faults: &mut Faults) -> String {
-        let text = command.get_long_about().or(command.get_about());
-        match text.map(ToString::to_string) {
-            Some(text) if !text.trim().is_empty() => {
-                format!("\n{}\n", self.expand(&text, at, false, faults).trim_end())
-            }
-            _ => String::new(),
+        match written(command) {
+            Some(text) => format!("\n{}\n", self.expand(&text, at, false, faults).trim_end()),
+            None => String::new(),
         }
+    }
+
+    /// Every command, hidden ones too, depth first in clap's order from the
+    /// tool's own, each with its title, such as `plans plan create`.
+    fn every(&self) -> Vec<(String, &Command)> {
+        fn walk<'a>(command: &'a Command, title: String, every: &mut Vec<(String, &'a Command)>) {
+            every.push((title.clone(), command));
+            for sub in command.get_subcommands() {
+                walk(sub, format!("{title} {}", sub.get_name()), every);
+            }
+        }
+        let mut every = Vec::new();
+        walk(
+            &self.command,
+            self.command.get_name().to_owned(),
+            &mut every,
+        );
+        every
     }
 
     fn topic_text(&self, topic: &RegisteredTopic, faults: &mut Faults) -> String {
@@ -309,7 +343,7 @@ impl Help {
                 tool: tool.to_owned(),
             });
         }
-        let at = format!("topic `{}`", topic.reference.topic());
+        let at = topic.at();
         format!(
             "{}\n",
             self.expand(topic.markdown, &at, false, faults).trim_end()
@@ -319,6 +353,15 @@ impl Help {
     /// `text` with each `{table:<name>}` and `{const:<NAME>}` replaced; `at`
     /// says where it is written, for a fault to name.
     fn expand(&self, text: &str, at: &str, in_table: bool, faults: &mut Faults) -> String {
+        for topic in links(text) {
+            if !self.topics.iter().any(|t| t.reference.topic() == topic) {
+                faults.push(Fault::UnknownLink {
+                    topic: topic.to_owned(),
+                    at: at.to_owned(),
+                    topics: self.topics.iter().map(|t| t.reference.topic()).collect(),
+                });
+            }
+        }
         let mut expanded = String::with_capacity(text.len());
         let mut rest = text;
         while let Some(start) = rest.find('{') {
@@ -367,6 +410,118 @@ impl Help {
         expanded.push_str(rest);
         expanded
     }
+}
+
+/// Checks `help` whole, the one test a tool needs for its manual: every
+/// command, hidden ones too, has text and a group, every placeholder and
+/// every `help:` link names something registered, and no two topics share a
+/// name. Fails naming every fault at once.
+///
+/// ```no_run
+/// # fn help() -> agent_help::Help { unimplemented!() }
+/// #[test]
+/// fn the_manual_is_whole() {
+///     agent_help::check(&help()).unwrap();
+/// }
+/// ```
+pub fn check(help: &Help) -> Result<(), Error> {
+    let mut faults = match help.clap() {
+        Ok(_) => Faults::default(),
+        Err(error) => Faults(error.faults),
+    };
+    for (title, command) in help.every() {
+        if written(command).is_none() {
+            faults.push(Fault::NoText { command: title });
+        }
+    }
+    faults.or(())
+}
+
+/// Every fenced code block of `language` in `help`, as its answers show it
+/// (placeholders replaced, a table's indent removed), so a tool can compile
+/// or run the examples its manual shows: each command's in clap's order,
+/// hidden ones too, then each topic's. A block's language is the first word
+/// of its info string, so `rust,no_run` is `rust`.
+pub fn code_blocks(help: &Help, language: &str) -> Vec<CodeBlock> {
+    // Faults are `check`'s to report.
+    let mut faults = Faults::default();
+    let mut texts = Vec::new();
+    for (title, command) in help.every() {
+        let at = format!("`{title}`");
+        let text = help.text(&at, command, &mut faults);
+        texts.push((at, text));
+    }
+    for topic in &help.topics {
+        texts.push((topic.at(), help.topic_text(topic, &mut faults)));
+    }
+    let mut blocks = Vec::new();
+    for (at, text) in texts {
+        for code in fenced(&text, language) {
+            blocks.push(CodeBlock {
+                at: at.clone(),
+                code,
+            });
+        }
+    }
+    blocks
+}
+
+/// A fenced code block of a manual, as [`code_blocks`] hands it over.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CodeBlock {
+    /// Where it is shown, such as `` `plans plan create` `` or
+    /// `` topic `sign-in` ``.
+    pub at: String,
+    /// Its lines, each ended by a newline.
+    pub code: String,
+}
+
+/// A command's text, its `long_about` else its `about`; none when blank.
+fn written(command: &Command) -> Option<String> {
+    let text = command
+        .get_long_about()
+        .or(command.get_about())?
+        .to_string();
+    (!text.trim().is_empty()).then_some(text)
+}
+
+/// The topic each `[...](help:<topic>)` in `text` names. A topic is written
+/// without whitespace; the empty one names none.
+fn links(text: &str) -> impl Iterator<Item = &str> {
+    text.split("](help:").skip(1).filter_map(|rest| {
+        let (topic, _) = rest.split_once(')')?;
+        (!topic.contains(|c: char| c.is_whitespace() || c == '(')).then_some(topic)
+    })
+}
+
+/// The code of each block fenced with backticks in `markdown` whose language
+/// is `language`, each line less the fence's indent.
+fn fenced(markdown: &str, language: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let mut lines = markdown.lines();
+    while let Some(line) = lines.next() {
+        let indent = line.len() - line.trim_start_matches(' ').len();
+        let opening = &line[indent..];
+        let ticks = opening.len() - opening.trim_start_matches('`').len();
+        if ticks < 3 {
+            continue;
+        }
+        let info = &opening[ticks..];
+        let mut code = String::new();
+        for line in lines.by_ref() {
+            let content = line.trim_start_matches(' ');
+            if content.trim_end().len() >= ticks && content.trim_end().chars().all(|c| c == '`') {
+                break;
+            }
+            let strip = (line.len() - content.len()).min(indent);
+            code.push_str(&line[strip..]);
+            code.push('\n');
+        }
+        if info.split([',', ' ']).next() == Some(language) {
+            blocks.push(code);
+        }
+    }
+    blocks
 }
 
 /// A command in the manual's list.
@@ -489,6 +644,21 @@ pub enum Fault {
         /// The table whose help it is in.
         at: String,
     },
+    /// A command, the tool's own or a subcommand, hidden or not, has no text.
+    NoText {
+        /// As it is run, such as `plans serve`.
+        command: String,
+    },
+    /// `[...](help:<topic>)` names no registered topic.
+    UnknownLink {
+        topic: String,
+        /// Where it is written.
+        at: String,
+        /// The topics there are.
+        topics: Vec<&'static str>,
+    },
+    /// Two topics registered under one name.
+    DuplicateTopic { topic: String },
     /// A topic's crate named a binary other than the tool's command.
     ForeignTopic { reference: TopicRef, tool: String },
     /// A command asked for that does not exist.
@@ -530,6 +700,20 @@ impl fmt::Display for Fault {
             Fault::TableInTable { table, at } => write!(
                 f,
                 "`{{table:{table}}}` in {at}: a table's help names constants, not tables"
+            ),
+            Fault::NoText { command } => write!(
+                f,
+                "`{command}` has no text: write its doc comment, and keep it as written \
+                 with `#[command(verbatim_doc_comment)]`"
+            ),
+            Fault::UnknownLink { topic, at, topics } => write!(
+                f,
+                "`help:{topic}` in {at} names no topic; the topics are: {}",
+                list(topics)
+            ),
+            Fault::DuplicateTopic { topic } => write!(
+                f,
+                "topic `{topic}` is added twice: give each topic a name of its own"
             ),
             Fault::ForeignTopic { reference, tool } => write!(
                 f,
