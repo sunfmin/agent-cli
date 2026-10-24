@@ -10,5 +10,7 @@ RUSTUP_TOOLCHAIN=stable
 export PATH RUSTUP_TOOLCHAIN
 
 cargo fmt --all --check
+# Flux alone, before the tests: beside them it would share the cores.
+./verify.sh
 cargo clippy --workspace --all-targets --quiet -- -D warnings
 cargo test --workspace --quiet
