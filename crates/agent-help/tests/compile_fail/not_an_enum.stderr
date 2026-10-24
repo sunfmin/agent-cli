@@ -1,0 +1,5 @@
+error: #[derive(Help)] is for an enum: its variants are the table's entries
+ --> tests/compile_fail/not_an_enum.rs:5:8
+  |
+5 | struct Refusal;
+  |        ^^^^^^^
