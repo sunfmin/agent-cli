@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 fn plans() -> Command {
     static BUILT: OnceLock<PathBuf> = OnceLock::new();
     let binary = BUILT.get_or_init(|| {
-        let status = Command::new(env!("CARGO"))
+        let output = Command::new(env!("CARGO"))
             .args([
                 "build",
                 "--quiet",
@@ -16,17 +16,23 @@ fn plans() -> Command {
                 "agent-help",
                 "--example",
                 "plans",
+                "--message-format=json",
             ])
-            .status()
+            .stderr(std::process::Stdio::inherit())
+            .output()
             .expect("cargo runs");
-        assert!(status.success(), "the example builds");
-        // This test runs from `<target>/<profile>/deps`; examples are built
-        // beside it, in `<target>/<profile>/examples`.
-        let deps = std::env::current_exe().unwrap();
-        let profile = deps.parent().unwrap().parent().unwrap();
-        profile
-            .join("examples")
-            .join(format!("plans{}", std::env::consts::EXE_SUFFIX))
+        assert!(output.status.success(), "the example builds");
+        // Where the binary lands is cargo's to say, and differs between
+        // cargo versions: its message about the example names it.
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+            .find(|message| {
+                message["reason"] == "compiler-artifact" && message["target"]["name"] == "plans"
+            })
+            .and_then(|artifact| artifact["executable"].as_str().map(PathBuf::from))
+            .expect("cargo names the example's binary")
     });
     Command::new(binary)
 }

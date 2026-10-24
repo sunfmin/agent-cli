@@ -10,6 +10,7 @@ dependencies = [
  "clap",
  "flux-alloc",
  "flux-core",
+ "serde_json",
  "trybuild",
 ]
 
