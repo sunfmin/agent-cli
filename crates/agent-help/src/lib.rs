@@ -55,8 +55,16 @@
 //!   takes a file.
 //! - A variant with neither, or with only empty `///` lines, does not
 //!   compile, and the error names every such variant.
+//!
+//! # Topics
+//!
+//! A topic is a piece of the manual that belongs to no single command; see
+//! [`Topic`].
+
+mod topic;
 
 pub use agent_help_derive::Help;
+pub use topic::{Topic, TopicRef};
 
 /// One variant of a [`Table`]: its name and its help.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

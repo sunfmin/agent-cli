@@ -1,11 +1,22 @@
-//! The derive macros of agent-help. Their contract is documented where it is
-//! used: on `agent_help`'s crate docs and its `Table` trait.
+//! The derive macros of agent-help. Their documentation, and the traits they
+//! implement, are agent-help's: depend on it, not on this crate.
 
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{Data, DeriveInput, Expr, ExprLit, Lit, Meta, Variant, parse_macro_input};
+use syn::{Data, DeriveInput, Meta, Variant, parse_macro_input};
+
+mod docs;
+mod topic;
+
+/// Implements `agent_help::Topic`; see there.
+#[proc_macro_derive(Topic, attributes(topic))]
+pub fn derive_topic(input: TokenStream) -> TokenStream {
+    topic::expand(&parse_macro_input!(input as DeriveInput))
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
 
 /// Implements `agent_help::Table` for an enum: each variant's help is its
 /// `#[help = ...]`, else its doc comment; a variant with neither is an error.
@@ -85,50 +96,14 @@ fn help(variant: &Variant) -> syn::Result<TokenStream2> {
         return Ok(quote!(#value));
     }
 
-    // `/// text` arrives as `#[doc = " text"]`, one attribute per line. A
-    // literal line loses one leading space; any other value, such as
-    // `include_str!`, is kept whole and read only by the compiler.
-    let mut lines = Vec::new();
-    let mut written = false;
-    for attr in variant.attrs.iter().filter(|a| a.path().is_ident("doc")) {
-        let Meta::NameValue(pair) = &attr.meta else {
-            continue;
-        };
-        match &pair.value {
-            Expr::Lit(ExprLit {
-                lit: Lit::Str(s), ..
-            }) => {
-                let text = s.value();
-                written |= !text.trim().is_empty();
-                let text: Vec<&str> = text
-                    .split('\n')
-                    .map(|line| line.strip_prefix(' ').unwrap_or(line))
-                    .collect();
-                let text = text.join("\n");
-                lines.push(quote!(#text));
-            }
-            value => {
-                written = true;
-                lines.push(quote!(#value));
-            }
-        }
-    }
-    if !written {
-        return Err(syn::Error::new_spanned(
+    docs::markdown(&variant.attrs).ok_or_else(|| {
+        syn::Error::new_spanned(
             &variant.ident,
             format!(
                 "variant `{}` has no help: write a doc comment (`///`) on it, \
                  or #[help = \"...\"]",
                 variant.ident
             ),
-        ));
-    }
-    let mut joined = Vec::new();
-    for (i, line) in lines.into_iter().enumerate() {
-        if i > 0 {
-            joined.push(quote!("\n"));
-        }
-        joined.push(line);
-    }
-    Ok(quote!(::core::concat!(#(#joined),*)))
+        )
+    })
 }
