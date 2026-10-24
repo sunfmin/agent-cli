@@ -5,3 +5,6 @@ description = "A CLI's help, written where each fact lives and assembled into on
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+
+[dependencies]
+agent-help-derive = { version = "0.1.0", path = "../agent-help-derive" }
