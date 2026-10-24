@@ -213,7 +213,7 @@ plans serve stop [OPTIONS]
 }
 
 #[test]
-fn a_command_s_entry_in_the_manual_is_its_answer_one_level_down() {
+fn a_command_s_place_in_the_manual_is_its_answer_one_level_down() {
     let manual = help().manual().unwrap();
     let alone = help().command_help(&["create"]).unwrap();
     let entry = alone

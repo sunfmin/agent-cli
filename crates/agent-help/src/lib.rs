@@ -75,9 +75,10 @@
 //!
 //! # The manual
 //!
-//! [`struct@Help`] assembles a tool's manual from clap's command tree, its
-//! topics and its tables, and answers `--help`, `<command> --help` and
-//! `help <topic>` from it. `examples/plans.rs` is a tool wired to one.
+//! [`struct@Help`] assembles a tool's manual from clap's command tree (each
+//! command's text, usage and arguments), its topics and its tables, and
+//! answers `--help`, `<command> --help` and `help <topic>` from it.
+//! `examples/plans.rs` is a tool wired to one.
 
 mod manual;
 mod topic;
@@ -125,19 +126,30 @@ pub trait Table {
 fn list<'a>(entries: impl IntoIterator<Item = &'a Entry>) -> String {
     let mut list = String::new();
     for entry in entries {
-        list.push_str("- `");
-        list.push_str(entry.name);
-        list.push_str("`: ");
-        for (i, line) in entry.markdown.lines().enumerate() {
-            if i > 0 {
-                list.push('\n');
-                if !line.is_empty() {
-                    list.push_str("  ");
-                }
-            }
-            list.push_str(line);
-        }
-        list.push('\n');
+        item(&mut list, "", entry.name, entry.markdown);
     }
     list
+}
+
+/// Pushes one Markdown list item, `indent` deep, ended by a newline: `name`
+/// in backticks, then, unless it is empty, `markdown`, whose later lines are
+/// indented to stay inside the item.
+pub(crate) fn item(list: &mut String, indent: &str, name: &str, markdown: &str) {
+    list.push_str(indent);
+    list.push_str("- `");
+    list.push_str(name);
+    list.push('`');
+    for (i, line) in markdown.lines().enumerate() {
+        if i == 0 {
+            list.push_str(": ");
+        } else {
+            list.push('\n');
+            if !line.is_empty() {
+                list.push_str(indent);
+                list.push_str("  ");
+            }
+        }
+        list.push_str(line);
+    }
+    list.push('\n');
 }
