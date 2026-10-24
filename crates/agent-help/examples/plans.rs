@@ -1,5 +1,6 @@
-//! A tool wired to its manual: `plans --help` answers the whole manual,
-//! `plans <command> --help` one command, `plans help <topic>` one topic.
+//! A tool wired to its manual: `plans --help` answers the index,
+//! `plans <command> --help` one command, `plans help <topic>` one topic and
+//! `plans help all` the whole manual.
 //!
 //! ```sh
 //! cargo run --example plans -- --help
@@ -132,7 +133,8 @@ fn main() -> ExitCode {
         Err(error) => error.exit(),
     };
     match cli.command {
-        Command::Help { topic: None } => print!("{}", help.manual().expect("checked by clap()")),
+        // `plans help all` too: `topic_help` answers it with the whole manual.
+        Command::Help { topic: None } => print!("{}", help.index().expect("checked by clap()")),
         Command::Help { topic: Some(topic) } => match help.topic_help(&topic) {
             Ok(markdown) => print!("{markdown}"),
             Err(error) => return refuse(&error.to_string()),

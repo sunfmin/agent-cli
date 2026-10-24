@@ -171,6 +171,105 @@ A plan is kept for 30 days.
 }
 
 #[test]
+fn the_index_lists_each_command_s_line_by_group_then_each_topic_s() {
+    assert_eq!(
+        help().index().unwrap(),
+        "\
+# `plans`
+
+Keeps plans, at most 10.
+
+Run `plans plan list` first.
+
+## Usage
+
+```
+plans [COMMAND]
+```
+
+## Commands
+
+### Run by the agent
+
+- `plans plan`: Works with plans.
+- `plans plan create`: Creates a plan.
+- `plans plan list`: Lists every plan.
+- `plans help`: Shows a topic.
+
+### Run by the operator
+
+- `plans serve`: Serves the plans.
+
+## Topics
+
+- `plans help sign-in`: Run `plans login` once; it keeps the token in the keychain.
+- `plans help retention`: A plan is kept for 30 days.
+- `plans help all`: The whole manual: every command and every topic, in full.
+"
+    );
+}
+
+#[test]
+fn a_command_s_line_is_the_first_line_of_its_about() {
+    let help = Help::new(
+        Command::new("plans")
+            .about("Keeps plans.")
+            .subcommand(
+                Command::new("serve")
+                    .next_help_heading("Run by the operator")
+                    .about("Serves {const:WHAT}.\nUntil stopped."),
+            )
+            .subcommand(
+                Command::new("stop")
+                    .next_help_heading("Run by the operator")
+                    .long_about("Stops serving.\n\nAt once."),
+            ),
+    )
+    .constant("WHAT", "the plans");
+    let index = help.index().unwrap();
+    let commands = index.split("## Commands\n").nth(1).unwrap();
+    assert_eq!(
+        commands,
+        "\n### Run by the operator\n\n\
+         - `plans serve`: Serves the plans.\n\
+         - `plans stop`: Stops serving.\n\n\
+         ## Topics\n\n\
+         - `plans help all`: The whole manual: every command and every topic, in full.\n"
+    );
+}
+
+#[test]
+fn a_topic_s_line_is_the_first_sentence_of_its_markdown() {
+    /// Sign in once. Run `plans login` (it asks `y/n?` once)!
+    #[derive(Topic)]
+    #[topic(name = "sign-in")]
+    struct Long;
+    let index = Help::new(Command::new("plans").about("Keeps plans."))
+        .topic::<Long>()
+        .index()
+        .unwrap();
+    assert!(
+        index.contains("- `plans help sign-in`: Sign in once.\n"),
+        "{index}"
+    );
+}
+
+#[test]
+fn the_index_answers_only_when_the_whole_manual_does() {
+    let help = help().topic::<SignIn>();
+    assert_eq!(
+        help.index().unwrap_err(),
+        help.manual().unwrap_err(),
+        "a fault of the whole manual"
+    );
+}
+
+#[test]
+fn help_all_answers_the_whole_manual() {
+    assert_eq!(help().topic_help("all"), help().manual());
+}
+
+#[test]
 fn a_nested_command_may_declare_a_group_of_its_own() {
     let help = Help::new(
         Command::new("plans").subcommand(
@@ -265,8 +364,8 @@ plans plan create
     );
     assert_eq!(
         help().command_help(&[]).unwrap(),
-        help().manual().unwrap(),
-        "the tool's own command is the whole manual"
+        help().index().unwrap(),
+        "the tool's own command is the index"
     );
 }
 
@@ -368,14 +467,15 @@ fn a_topic_of_another_binary_is_refused() {
 }
 
 #[test]
-fn clap_answers_every_help_flag_with_the_manual() {
+fn clap_answers_every_help_flag_from_the_manual() {
     let help = help();
     let answer = |args: &[&str]| {
         let error = help.clap().unwrap().try_get_matches_from(args).unwrap_err();
         assert_eq!(error.kind(), ErrorKind::DisplayHelp, "{args:?}");
         error.to_string()
     };
-    assert_eq!(answer(&["plans", "--help"]), help.manual().unwrap());
+    assert_eq!(answer(&["plans", "--help"]), help.index().unwrap());
+    assert_eq!(answer(&["plans", "-h"]), help.index().unwrap());
     assert_eq!(
         answer(&["plans", "plan", "create", "--help"]),
         help.command_help(&["plan", "create"]).unwrap()

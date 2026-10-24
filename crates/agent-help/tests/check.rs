@@ -155,6 +155,74 @@ fn two_topics_sharing_a_name_is_a_fault() {
 }
 
 #[test]
+fn a_topic_that_does_not_open_with_a_sentence_is_a_fault_naming_it() {
+    /// ## Signing in
+    ///
+    /// Run `plans login` once.
+    #[derive(Topic)]
+    #[topic(name = "headed")]
+    struct Headed;
+    /// - Run `plans login` once.
+    #[derive(Topic)]
+    #[topic(name = "listed")]
+    struct Listed;
+    /// 1. Run `plans login` once.
+    #[derive(Topic)]
+    #[topic(name = "numbered")]
+    struct Numbered;
+    /// ```sh
+    /// plans login
+    /// ```
+    #[derive(Topic)]
+    #[topic(name = "fenced")]
+    struct Fenced;
+    /// Run `plans login` once
+    #[derive(Topic)]
+    #[topic(name = "unended")]
+    struct Unended;
+    /// Run `plans login. now` once
+    #[derive(Topic)]
+    #[topic(name = "in-code")]
+    struct InCode;
+    let help = Help::new(Command::new("plans").about("Keeps plans."))
+        .topic::<Headed>()
+        .topic::<Listed>()
+        .topic::<Numbered>()
+        .topic::<Fenced>()
+        .topic::<Unended>()
+        .topic::<InCode>();
+    let fault = |topic: &str| {
+        format!(
+            "topic `{topic}` does not open with a sentence, the line the index shows of it: \
+             start its Markdown with one, ended by `.`, `!` or `?`"
+        )
+    };
+    assert_eq!(
+        faults(agent_help::check(&help).unwrap_err()),
+        [
+            "headed", "listed", "numbered", "fenced", "unended", "in-code"
+        ]
+        .map(fault)
+    );
+}
+
+#[test]
+fn a_topic_named_all_is_a_fault() {
+    /// Everything.
+    #[derive(Topic)]
+    #[topic(name = "all")]
+    struct All;
+    let help = Help::new(Command::new("plans").about("Keeps plans.")).topic::<All>();
+    assert_eq!(
+        faults(agent_help::check(&help).unwrap_err()),
+        [
+            "topic `all` is named as `plans help all` is, which answers the whole manual: \
+          give it another name"
+        ]
+    );
+}
+
+#[test]
 fn an_unresolved_placeholder_is_a_fault() {
     let help = Help::new(
         Command::new("plans")
