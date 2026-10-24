@@ -75,6 +75,31 @@ fn the_table_renders_as_one_markdown_list_in_declaration_order() {
     );
 }
 
+#[test]
+fn a_subset_renders_as_the_same_list_in_the_order_given() {
+    assert_eq!(
+        Refusal::markdown_of(&[Refusal::HTTPTimeout(5), Refusal::OverLimit { by: 3 }]),
+        "\
+- `http_timeout`: What the user reads.
+- `over_limit`: The plan is over its limit.
+
+  Raise it with:
+
+  ```sh
+  tool plan raise --by 10
+  ```
+
+  - one
+    - nested
+"
+    );
+}
+
+#[test]
+fn an_empty_subset_renders_as_nothing() {
+    assert_eq!(Refusal::markdown_of(&[]), "");
+}
+
 /// Help from a file, as a long text is kept.
 #[derive(Help)]
 #[allow(dead_code)]

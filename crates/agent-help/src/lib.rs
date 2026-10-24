@@ -43,6 +43,15 @@
 //! - `timeout`: The server did not answer in time: run the command again.
 //! "
 //! );
+//!
+//! // Only the codes one command can meet, as the same list, in this order.
+//! assert_eq!(
+//!     Refusal::markdown_of(&[Refusal::Timeout, Refusal::NameTaken]),
+//!     "\
+//! - `timeout`: The server did not answer in time: run the command again.
+//! - `name_taken`: The name is taken by another plan.
+//! "
+//! );
 //! ````
 //!
 //! - A variant's name is its identifier in snake_case, as a tool prints the
@@ -55,6 +64,9 @@
 //!   takes a file.
 //! - A variant with neither, or with only empty `///` lines, does not
 //!   compile, and the error names every such variant.
+//! - [`Table::markdown`] lists every entry; [`Table::markdown_of`] lists the
+//!   values given, in their order, each item exactly as `markdown` writes it:
+//!   for a page that lists part of a table, such as one command's refusals.
 //!
 //! # Topics
 //!
@@ -95,22 +107,37 @@ pub trait Table {
     /// order: the name in backticks, then its help, whose later lines are
     /// indented to stay inside the item. Ends with a newline.
     fn markdown() -> String {
-        let mut list = String::new();
-        for entry in Self::ENTRIES {
-            list.push_str("- `");
-            list.push_str(entry.name);
-            list.push_str("`: ");
-            for (i, line) in entry.markdown.lines().enumerate() {
-                if i > 0 {
-                    list.push('\n');
-                    if !line.is_empty() {
-                        list.push_str("  ");
-                    }
-                }
-                list.push_str(line);
-            }
-            list.push('\n');
-        }
-        list
+        list(Self::ENTRIES)
     }
+
+    /// The given values' entries as the list [`markdown`](Table::markdown)
+    /// gives for all of them, one item per value in the order given; empty
+    /// when no value is.
+    fn markdown_of<'a>(values: impl IntoIterator<Item = &'a Self>) -> String
+    where
+        Self: 'a,
+    {
+        list(values.into_iter().map(Self::entry))
+    }
+}
+
+/// Entries as a Markdown list, each item ended by a newline.
+fn list<'a>(entries: impl IntoIterator<Item = &'a Entry>) -> String {
+    let mut list = String::new();
+    for entry in entries {
+        list.push_str("- `");
+        list.push_str(entry.name);
+        list.push_str("`: ");
+        for (i, line) in entry.markdown.lines().enumerate() {
+            if i > 0 {
+                list.push('\n');
+                if !line.is_empty() {
+                    list.push_str("  ");
+                }
+            }
+            list.push_str(line);
+        }
+        list.push('\n');
+    }
+    list
 }
