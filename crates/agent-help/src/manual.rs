@@ -502,9 +502,9 @@ fn fenced(markdown: &str, language: &str) -> Vec<String> {
     let mut blocks = Vec::new();
     let mut lines = markdown.lines();
     while let Some(line) = lines.next() {
-        let indent = line.len() - line.trim_start_matches(' ').len();
+        let indent = leading(line, b' ');
         let opening = &line[indent..];
-        let ticks = opening.len() - opening.trim_start_matches('`').len();
+        let ticks = leading(opening, b'`');
         if ticks < 3 {
             continue;
         }
@@ -515,7 +515,7 @@ fn fenced(markdown: &str, language: &str) -> Vec<String> {
             if content.trim_end().len() >= ticks && content.trim_end().chars().all(|c| c == '`') {
                 break;
             }
-            let strip = (line.len() - content.len()).min(indent);
+            let strip = leading(line, b' ').min(indent);
             code.push_str(&line[strip..]);
             code.push('\n');
         }
@@ -524,6 +524,12 @@ fn fenced(markdown: &str, language: &str) -> Vec<String> {
         }
     }
     blocks
+}
+
+/// How many bytes `text` starts with that are `byte`, an ASCII byte. Counted
+/// rather than taken as the difference of two lengths, which Flux cannot bound.
+fn leading(text: &str, byte: u8) -> usize {
+    text.bytes().take_while(|&b| b == byte).count()
 }
 
 /// A command in the manual's list.
