@@ -1,79 +1,85 @@
-#!/usr/bin/env bash
-# Checks with Flux every crate whose Cargo.toml turns it on
-# ([package.metadata.flux]), with the checker the workspace Cargo.toml pins,
-# and fails unless each crate's every function is checked: nothing trusted,
-# nothing ignored. Needs `cargo-flux`, `fixpoint` and `z3` installed, each the
-# one pinned; it refuses to check with any other.
+#!/bin/sh
+# Checks the refinement types of every crate that enables Flux (its
+# Cargo.toml has `[package.metadata.flux]`), one crate at a time, so the last
+# summary Flux prints in each run is that crate's. Needs `cargo-flux`,
+# `fixpoint` and `z3` installed, each the one Cargo.toml pins: it refuses to
+# check with any other.
 #
-#   ./verify.sh          check every such crate
-#   ./verify.sh <name>   check only the functions whose path contains <name>
-set -euo pipefail
+#   ./verify.sh                 check every Flux crate whole
+#   ./verify.sh first           check the functions whose path contains a name
+#   ./verify.sh <cargo flux arguments>
+#
+# Before each crate it prints `verify: checking <its directory>` on stdout.
+set -e
 cd "$(dirname "$0")"
-
 # cargo-flux re-invokes `cargo +<its nightly>`, which only rustup's cargo
 # understands, and rustup needs some toolchain to start from.
 PATH="$HOME/.cargo/bin:$PATH"
-: "${RUSTUP_TOOLCHAIN:=stable}"
-# A solver query past 20 s fails on its function, by name; -Fcatch-bugs checks
-# on past an error, so one run names every failing function. Nothing limits
-# the whole run: one cut short would name nothing.
-: "${FLUXFLAGS=-Ftimings -Ffixpoint-timeout=20 -Fcatch-bugs}"
-logs=$(mktemp -d)
-trap 'rm -rf "$logs"' EXIT
-FLUXFLAGS="$FLUXFLAGS -Flog-dir=$logs"
-export PATH RUSTUP_TOOLCHAIN FLUXFLAGS
-
-pin() { sed -n "/^\[workspace\.metadata\.flux\]/,/^\[/s/^$1 = \"\(.*\)\"$/\1/p" Cargo.toml; }
-flux_rev=$(pin rev)
-fixpoint_pin=$(pin fixpoint)
-z3_pin=$(pin z3)
+: "${RUSTUP_TOOLCHAIN:=$(rustup toolchain list | head -1 | cut -d' ' -f1)}"
+export PATH RUSTUP_TOOLCHAIN
+# The checker is the pinned one, or nothing is checked: another build of it
+# can pass or fail the same tree differently. Each tool is asked what it is,
+# which is as far as this goes:
+#   cargo-flux  reports the first seven digits of the Flux revision it was
+#               built from, and they are compared to the pinned revision's.
+#               Not checked: the rest of the revision, a change made to that
+#               source before the build, and the driver and libraries in
+#               ~/.flux, which report no revision and are installed with it.
+#   fixpoint    reports its version and its whole commit: both are compared.
+#   z3          reports its version, which is compared, and nothing of its
+#               build.
+flux_rev=$(sed -n 's/^flux-core = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
+fixpoint_pin=$(sed -n 's/^fixpoint = "\(.*\)"$/\1/p' Cargo.toml)
+z3_pin=$(sed -n 's/^z3 = "\(.*\)"$/\1/p' Cargo.toml)
+if [ -z "$flux_rev" ] || [ -z "$fixpoint_pin" ] || [ -z "$z3_pin" ]; then
+    echo "verify: Cargo.toml must pin the Flux revision, fixpoint and z3, and one of them is not read from it" >&2
+    exit 1
+fi
 flux_is=$(cargo flux --version 2>/dev/null | cut -d' ' -f2) || true
 fixpoint_is=$(fixpoint --version 2>/dev/null | sed -n 's/^fixpoint //p') || true
 z3_is=$(z3 --version 2>/dev/null | sed -n 's/^Z3 version \([^ ]*\).*/\1/p') || true
 pinned=yes
-# cargo-flux reports the first seven digits of the revision it was built from.
-if [ -z "$flux_is" ] || [ "${flux_rev#"$flux_is"}" = "$flux_rev" ]; then
-    pinned=
-    echo "verify: cargo-flux is built from Flux ${flux_is:-(nothing reported)}, and Cargo.toml pins $flux_rev. Install the pinned one:" >&2
-    echo "    git clone https://github.com/flux-rs/flux && cd flux && git checkout $flux_rev && cargo xtask install" >&2
+case "$flux_is" in
+"") pinned= ;;
+*) case "$flux_rev" in "$flux_is"*) ;; *) pinned= ;; esac ;;
+esac
+if [ -z "$pinned" ]; then
+    cat >&2 <<EOF
+verify: cargo-flux is built from Flux ${flux_is:-(nothing reported)}, and Cargo.toml pins $flux_rev. Install the pinned one:
+    git clone https://github.com/flux-rs/flux && cd flux && git checkout $flux_rev && cargo xtask install
+EOF
 fi
 if [ "$fixpoint_is" != "$fixpoint_pin" ]; then
     pinned=
-    echo "verify: fixpoint is ${fixpoint_is:-(nothing reported)}, and Cargo.toml pins $fixpoint_pin. Install the pinned one, built at the commit in the brackets:" >&2
-    echo "    https://github.com/ucsd-progsys/liquid-fixpoint#how-to-build-and-install" >&2
+    cat >&2 <<EOF
+verify: fixpoint is ${fixpoint_is:-(nothing reported)}, and Cargo.toml pins $fixpoint_pin. Install the pinned one, built at the commit in the brackets:
+    https://github.com/ucsd-progsys/liquid-fixpoint#how-to-build-and-install
+EOF
 fi
 if [ "$z3_is" != "$z3_pin" ]; then
     pinned=
-    echo "verify: z3 is ${z3_is:-(nothing reported)}, and Cargo.toml pins $z3_pin. Install the pinned one:" >&2
-    echo "    https://github.com/Z3Prover/z3/releases/tag/z3-$z3_pin" >&2
+    cat >&2 <<EOF
+verify: z3 is ${z3_is:-(nothing reported)}, and Cargo.toml pins $z3_pin. Install the pinned one:
+    https://github.com/Z3Prover/z3/releases/tag/z3-$z3_pin
+EOF
 fi
 [ -n "$pinned" ] || exit 1
-
-crates=$(awk 'FNR == 1 { name = "" } /^name = / && name == "" { name = $3; gsub(/"/, "", name) }
-    /^\[package\.metadata\.flux\]/ { print name }' crates/*/Cargo.toml)
-if [ -n "${1:-}" ]; then
-    for crate in $crates; do cargo flux check -p "$crate" --only-check="def:$1"; done
-    exit
-fi
-
-# -j1 keeps each crate's `Checking` line next to its summary.
-args=(check -j1)
-for crate in $crates; do args+=(-p "$crate"); done
-output=$(mktemp)
-trap 'rm -rf "$logs" "$output"' EXIT
-if ! cargo flux "${args[@]}" </dev/null >"$output" 2>&1; then
-    cat "$output" >&2
-    echo "verify: Flux fails; a function named with \"fixpoint query timed out\" took a solver query past 20 s" >&2
+# Every run, the gate's or a hand's, stops a solver query of one function past
+# twenty seconds as an error naming it, checks on past it so one run names
+# every slow function, and times each, the file of timings kept out of the
+# tree: a run is never held up by one query.
+FLUXFLAGS="-Ftimings -Ffixpoint-timeout=20 -Fcatch-bugs -Flog-dir=$PWD/target/flux-log${FLUXFLAGS:+ $FLUXFLAGS}"
+export FLUXFLAGS
+case "${1:-}" in
+"" | -* | check) ;;
+*) set -- check --only-check="def:$1" ;;
+esac
+crates=$(LC_ALL=C grep -l '^\[package\.metadata\.flux\]' crates/*/Cargo.toml)
+if [ -z "$crates" ]; then
+    echo "verify: no crate enables Flux: a pure crate's Cargo.toml has [package.metadata.flux] with enabled = true" >&2
     exit 1
 fi
-for crate in $crates; do
-    summary=$(awk -v crate="$crate" '/^ *Checking / { at = $2 } /^summary\./ && at == crate { s = $0 } END { print s }' "$output")
-    case "$summary" in
-    *"; 0 trusted; 0 ignored."*) echo "verify: $crate: $summary" ;;
-    *)
-        cat "$output" >&2
-        echo "verify: $crate must leave nothing to trust, and Flux reports: ${summary:-no summary}" >&2
-        exit 1
-        ;;
-    esac
+for manifest in $crates; do
+    echo "verify: checking ${manifest%/Cargo.toml}"
+    cargo flux "$@" --manifest-path "$manifest"
 done

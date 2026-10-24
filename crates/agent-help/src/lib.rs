@@ -79,7 +79,14 @@
 //! topics and its tables, and answers `--help`, `<command> --help` and
 //! `help <topic>` from it. `examples/plans.rs` is a tool wired to one.
 
+// Flux's refinements of the standard library: without them a slice has no
+// length Flux knows of. Both are empty outside Flux.
+extern crate flux_alloc;
+extern crate flux_core;
+
 mod manual;
+#[cfg(flux)]
+mod rejected;
 mod topic;
 
 pub use agent_help_derive::Help;
