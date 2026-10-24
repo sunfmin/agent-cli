@@ -76,9 +76,14 @@ its crate docs say how.
   `check`.
 - The answer is the Markdown as written: no rendering, no wrapping, no width.
   Write each paragraph on one line.
-- `--help` answers the whole manual, `<command> --help` that command; `-h`
+- `--help` answers the index: the tool's own text, then each command's line
+  under its group, then each topic's line. `<command> --help` answers that
+  command whole, `help <topic>` that topic, `help all` the whole manual; `-h`
   answers what `--help` does. What belongs to no command (how to sign in, a
-  concept every command shares) is a topic: `help <topic>`.
+  concept every command shares) is a topic.
+- A command's line in the index is the first line of its text; a topic's, the
+  first sentence of its Markdown, so a topic opens with one. The tool's own
+  text sends the reader to `<command> --help` before a command's first run.
 - The manual says: what it is, what it needs, what to run first, the commands
   grouped by who runs them, the rules to know first.
 - A command's help says: when to run it, what it reads and writes, what it
@@ -93,10 +98,11 @@ its crate docs say how.
 - Help names nothing its reader cannot open: no ADR numbers, no repository
   paths, no internal documents. The reader has the binary and its help,
   nothing else.
-- The shipped SKILL.md is a few lines that send the agent to `--help`.
+- The shipped SKILL.md is a few lines that send the agent to `--help`, the
+  index.
 - `agent_help::check` is the one test that keeps the manual whole: every
   command has text and a group, every placeholder and topic link names
-  something.
+  something, every topic opens with a sentence, none is named `all`.
 
 ## Nothing in the process
 
@@ -159,7 +165,7 @@ Module and interface comments: see `comments-first`.
 
 - [ ] No pure crate does I/O; Flux says `0 trusted; 0 ignored`
 - [ ] One JSON object per command; failure is `{"error"}` and non-zero
-- [ ] An agent that never saw the tool runs its first command from `--help` alone
+- [ ] An agent that never saw the tool runs its first command from `--help` and that command's `--help` alone
 - [ ] `agent_help::check` passes in a test, and help names nothing the reader cannot open
 - [ ] Every error carries the line that fixes it
 - [ ] Killing it mid-run and running it again loses nothing

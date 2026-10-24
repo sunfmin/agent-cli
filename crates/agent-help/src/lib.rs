@@ -77,12 +77,22 @@
 //!
 //! [`struct@Help`] assembles a tool's manual from clap's command tree (each
 //! command's text, usage and arguments), its topics and its tables, and
-//! answers `--help`, `<command> --help` and `help <topic>` from it.
+//! answers from it:
+//!
+//! - `<binary> --help`: the index, [`Help::index`]: the tool's own text, then
+//!   each command's line under its group, then each topic's line. It is what
+//!   an agent reads first, and what a tool's shipped SKILL.md sends it to.
+//! - `<binary> <command> --help`: that command, whole, [`Help::command_help`].
+//! - `<binary> help <topic>`: that topic, [`Help::topic_help`].
+//! - `<binary> help all`: the whole manual, [`Help::manual`]: every command
+//!   and every topic, in full, what a page for humans is generated from.
+//!
 //! `examples/plans.rs` is a tool wired to one.
 //!
 //! [`check`] is the one test a tool needs to keep its manual whole: it fails
 //! naming every command without text, every `[...](help:<topic>)` link or
-//! placeholder that names nothing, and every topic name used twice.
+//! placeholder that names nothing, every topic name used twice, every topic
+//! that does not open with a sentence, and a topic named `all`.
 //! [`code_blocks`] hands the tool the manual's fenced blocks of one language,
 //! so it can compile the examples its help shows.
 

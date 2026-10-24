@@ -5,9 +5,12 @@ use std::fmt;
 /// with its Markdown.
 ///
 /// Derive it on an empty struct. Its name is `#[topic(name = "...")]`, in
-/// kebab-case; its Markdown is its doc comment, as written, most often a file
-/// of its own, whose sections are `##` headings under the title the manual
-/// writes (see [`Help`](struct@crate::Help)). The crate names its binary
+/// kebab-case, and never `all`, which `<binary> help all` answers with the
+/// whole manual; its Markdown is its doc comment, as written, most often a
+/// file of its own, whose sections are `##` headings under the title the
+/// manual writes (see [`Help`](struct@crate::Help)). It opens with a
+/// sentence, the line the index shows of it; [`check`](crate::check) fails
+/// on either. The crate names its binary
 /// once, at its root, with [`binary!`](crate::binary):
 ///
 /// ```

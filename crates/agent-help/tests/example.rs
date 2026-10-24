@@ -104,7 +104,50 @@ plans plan create [OPTIONS] <NAME>
 }
 
 #[test]
-fn help_answers_the_whole_manual() {
+fn help_answers_the_index() {
+    let index = format!(
+        "\
+# `plans`
+
+Keeps plans for a team, at most 10.
+
+Every command prints one JSON object. Run `plans plan list` first.
+
+## Usage
+
+```
+plans [OPTIONS] <COMMAND>
+```
+
+## Arguments
+
+{STORE}
+## Commands
+
+### Run by the agent
+
+- `plans plan`: Works with plans.
+- `plans plan create`: Creates a plan.
+- `plans plan list`: Lists every plan.
+- `plans help`: Shows one topic of this manual, or all of it.
+
+### Run by the operator
+
+- `plans serve`: Serves the plans to the team.
+
+## Topics
+
+- `plans help sign-in`: Run `plans login` once; it keeps the token in the keychain.
+- `plans help all`: The whole manual: every command and every topic, in full.
+"
+    );
+    assert_eq!(run(&["--help"]), (index.clone(), true));
+    assert_eq!(run(&["-h"]), (index.clone(), true));
+    assert_eq!(run(&["help"]), (index, true));
+}
+
+#[test]
+fn help_all_answers_the_whole_manual() {
     let create = create("####");
     let manual = format!(
         "\
@@ -201,8 +244,7 @@ Run `plans login` once; it keeps the token in the keychain.
 Every command refuses with `not_signed_in` until then.
 "
     );
-    assert_eq!(run(&["--help"]), (manual.clone(), true));
-    assert_eq!(run(&["help"]), (manual, true));
+    assert_eq!(run(&["help", "all"]), (manual, true));
 }
 
 #[test]

@@ -112,6 +112,10 @@ use crate::{Table, Topic, TopicRef, item};
 /// - The manual gives the tool's usage and arguments after its text, and
 ///   what it says of each command is that command's answer, one heading
 ///   level down (ADR 0005).
+/// - The index, what the tool's `--help` answers, is the tool's own answer,
+///   then one line per command, the first line of its text, and one per
+///   topic, the first sentence of its Markdown; the whole manual is one
+///   command away, `<binary> help all`, and `all` is never a topic's name.
 /// - Hidden commands, hidden arguments, hidden values, and clap's own
 ///   `--help` and `--version` are left out of the manual.
 /// - [`check`] is the one test a tool needs to keep this manual whole, and
@@ -186,7 +190,22 @@ impl Help {
         self
     }
 
-    /// The whole manual, what `<binary> --help` answers: the tool's own
+    /// The index, what `<binary> --help` answers: the tool's own text, then
+    /// each command's line under its group (groups in the order the whole
+    /// manual has them), then each topic's line, and last `<binary> help
+    /// all`'s. A command's line is the first line of its `about`, else of its
+    /// `long_about`; a topic's is the first sentence of its Markdown, as
+    /// [`check`] requires it to open. It answers only when the whole manual
+    /// does, with the same faults.
+    pub fn index(&self) -> Result<String, Error> {
+        let mut faults = Faults::default();
+        let tree = self.tree();
+        self.whole(&tree, &mut faults);
+        let index = self.indexed(&tree, &mut faults);
+        faults.or(index)
+    }
+
+    /// The whole manual, what `<binary> help all` answers: the tool's own
     /// text, then every command under its group (groups in the order clap's
     /// tree first names them), then every topic.
     pub fn manual(&self) -> Result<String, Error> {
@@ -196,11 +215,11 @@ impl Help {
     }
 
     /// One command's text, what `<binary> <path...> --help` answers; the
-    /// empty path is the tool itself, whose answer is the whole manual. A
-    /// command that does not exist is an error naming those that do.
+    /// empty path is the tool itself, whose answer is the [index](Help::index).
+    /// A command that does not exist is an error naming those that do.
     pub fn command_help(&self, path: &[&str]) -> Result<String, Error> {
         if path.is_empty() {
-            return self.manual();
+            return self.index();
         }
         let title = [self.command.get_name()]
             .iter()
@@ -226,9 +245,13 @@ impl Help {
         faults.or(answer)
     }
 
-    /// One topic's Markdown, what `<binary> help <name>` answers. A topic
-    /// that does not exist is an error naming those that do.
+    /// One topic's Markdown, what `<binary> help <name>` answers; `all` is
+    /// the [whole manual](Help::manual). A topic that does not exist is an
+    /// error naming those that do.
     pub fn topic_help(&self, name: &str) -> Result<String, Error> {
+        if name == ALL {
+            return self.manual();
+        }
         let Some(topic) = self.topics.iter().find(|t| t.reference.topic() == name) else {
             return Err(Fault::UnknownTopic {
                 topic: name.to_owned(),
@@ -242,16 +265,17 @@ impl Help {
         faults.or(format!("{title}\n{text}"))
     }
 
-    /// The tool's command, every `--help` and `-h` in it answering with this
-    /// manual: the tool's with the whole manual, each subcommand's with its
-    /// own text. Checks every command, hidden ones too, so a tool refuses to
-    /// start with a broken manual rather than show one.
+    /// The tool's command, every `--help` and `-h` in it answering from this
+    /// manual: the tool's with the index, each subcommand's with its own
+    /// text. Checks the whole manual and every command, hidden ones too, so a
+    /// tool refuses to start with a broken manual rather than show one.
     pub fn clap(&self) -> Result<Command, Error> {
         let mut faults = Faults::default();
         let tree = self.tree();
-        let manual = self.whole(&tree, &mut faults);
+        self.whole(&tree, &mut faults);
+        let index = self.indexed(&tree, &mut faults);
         let command = self.answering(
-            self.command.clone().override_help(manual),
+            self.command.clone().override_help(index),
             &tree,
             self.command.get_name(),
             &mut faults,
@@ -306,20 +330,10 @@ impl Help {
         manual.push_str(&self.body(&format!("`{root}`"), tree, PAGE, faults));
 
         let listed = listed(tree);
-        let mut groups: Vec<&str> = Vec::new();
-        for command in &listed {
-            match command.group {
-                Some(group) if !groups.contains(&group) => groups.push(group),
-                Some(_) => {}
-                None => faults.push(Fault::UngroupedCommand {
-                    command: command.title.clone(),
-                }),
-            }
-        }
         if !listed.is_empty() {
             manual.push_str("\n## Commands\n");
         }
-        for group in groups {
+        for group in groups(&listed, faults) {
             manual.push_str(&format!("\n### {group}\n"));
             for command in listed.iter().filter(|c| c.group == Some(group)) {
                 let at = format!("`{}`", command.title);
@@ -347,6 +361,48 @@ impl Help {
             manual.push_str(&self.topic_text(topic, TOPIC, faults));
         }
         manual
+    }
+
+    /// The index of `tree`, [`Help::tree`].
+    fn indexed(&self, tree: &Command, faults: &mut Faults) -> String {
+        let root = tree.get_name();
+        let mut index = heading(PAGE, &format!("`{root}`"));
+        index.push_str(&self.body(&format!("`{root}`"), tree, PAGE, faults));
+
+        let listed = listed(tree);
+        if !listed.is_empty() {
+            index.push_str("\n## Commands\n");
+        }
+        for group in groups(&listed, faults) {
+            index.push_str(&format!("\n### {group}\n\n"));
+            for command in listed.iter().filter(|c| c.group == Some(group)) {
+                let line = command
+                    .command
+                    .get_about()
+                    .or(command.command.get_long_about())
+                    .map(|about| {
+                        let at = format!("`{}`", command.title);
+                        let about = self.expand(&about.to_string(), &at, false, faults);
+                        about.lines().next().unwrap_or_default().trim().to_owned()
+                    })
+                    .unwrap_or_default();
+                item(&mut index, "", &command.title, &line);
+            }
+        }
+
+        index.push_str("\n## Topics\n\n");
+        for topic in &self.topics {
+            let markdown = self.expand(topic.markdown, &topic.at(), false, faults);
+            let line = sentence(&markdown).unwrap_or_default();
+            item(&mut index, "", &topic.reference.to_string(), line);
+        }
+        item(
+            &mut index,
+            "",
+            &format!("{root} help {ALL}"),
+            "The whole manual: every command and every topic, in full.",
+        );
+        index
     }
 
     /// One command's answer: its heading, then its body.
@@ -569,6 +625,22 @@ fn every(tree: &Command) -> Vec<(String, &Command)> {
     every
 }
 
+/// The groups of `listed`, in the order it first names them. A command with
+/// no group is a fault naming it.
+fn groups<'a>(listed: &[Listed<'a>], faults: &mut Faults) -> Vec<&'a str> {
+    let mut groups: Vec<&str> = Vec::new();
+    for command in listed {
+        match command.group {
+            Some(group) if !groups.contains(&group) => groups.push(group),
+            Some(_) => {}
+            None => faults.push(Fault::UngroupedCommand {
+                command: command.title.clone(),
+            }),
+        }
+    }
+    groups
+}
+
 /// Every visible subcommand of `tree`, depth first in clap's order, with its
 /// group.
 fn listed(tree: &Command) -> Vec<Listed<'_>> {
@@ -596,8 +668,10 @@ fn listed(tree: &Command) -> Vec<Listed<'_>> {
 
 /// Checks `help` whole, the one test a tool needs for its manual: every
 /// command, hidden ones too, has text and a group, every placeholder and
-/// every `help:` link names something registered, and no two topics share a
-/// name. Fails naming every fault at once.
+/// every `help:` link names something registered, no two topics share a
+/// name, every topic opens with a sentence, its line in the index, and none
+/// is named `all`, which `<binary> help all` answers with the whole manual.
+/// Fails naming every fault at once.
 ///
 /// ```no_run
 /// # fn help() -> agent_help::Help { unimplemented!() }
@@ -614,6 +688,18 @@ pub fn check(help: &Help) -> Result<(), Error> {
     for (title, command) in every(&help.tree()) {
         if written(command).is_none() {
             faults.push(Fault::NoText { command: title });
+        }
+    }
+    for topic in &help.topics {
+        if topic.reference.topic() == ALL {
+            faults.push(Fault::TopicNamedAll {
+                reference: topic.reference,
+            });
+        }
+        if sentence(topic.markdown).is_none() {
+            faults.push(Fault::NoSentence {
+                topic: topic.reference.topic().to_owned(),
+            });
         }
     }
     faults.or(())
@@ -681,6 +767,42 @@ fn links(text: &str) -> impl Iterator<Item = &str> {
         (!topic.contains(|c: char| c.is_whitespace() || c == '(')).then_some(topic)
     })
 }
+
+/// The first sentence of `markdown`, the line the index shows of a topic: its
+/// first line, which opens a paragraph, up to the first `.`, `!` or `?`
+/// outside a code span that ends the line or is followed by a space. None
+/// when `markdown` does not open with one.
+fn sentence(markdown: &str) -> Option<&str> {
+    let line = markdown.lines().next()?;
+    let numbered = line.trim_start_matches(|c: char| c.is_ascii_digit());
+    let opens_a_block = line.is_empty()
+        || line.starts_with([' ', '\t', '>', '|', '<'])
+        || atx(line).is_some()
+        || Fence::opened_by(line).is_some()
+        || ["- ", "* ", "+ "]
+            .iter()
+            .any(|marker| line.starts_with(marker))
+        || (numbered.len() < line.len()
+            && (numbered.starts_with(". ") || numbered.starts_with(") ")));
+    if opens_a_block {
+        return None;
+    }
+    let mut code = false;
+    let mut chars = line.char_indices().peekable();
+    while let Some((at, c)) = chars.next() {
+        match c {
+            '`' => code = !code,
+            '.' | '!' | '?' if !code && matches!(chars.peek(), None | Some((_, ' '))) => {
+                return line.get(..=at);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// What `<binary> help` answers with the whole manual, in place of a topic.
+const ALL: &str = "all";
 
 /// The level of the heading an answer gives the text it asks for alone: a
 /// page's title.
@@ -1003,6 +1125,12 @@ pub enum Fault {
         /// The deepest level it may be written at there.
         deepest: usize,
     },
+    /// A topic whose Markdown does not open with a sentence, its line in the
+    /// index.
+    NoSentence { topic: String },
+    /// A topic named `all`, which `<binary> help all` answers with the whole
+    /// manual instead.
+    TopicNamedAll { reference: TopicRef },
     /// A topic asked for that does not exist.
     UnknownTopic {
         topic: String,
@@ -1076,6 +1204,17 @@ impl fmt::Display for Fault {
                 f,
                 "no command `{command}`; the commands are: {}",
                 list(commands)
+            ),
+            Fault::NoSentence { topic } => write!(
+                f,
+                "topic `{topic}` does not open with a sentence, the line the index shows of it: \
+                 start its Markdown with one, ended by `.`, `!` or `?`"
+            ),
+            Fault::TopicNamedAll { reference } => write!(
+                f,
+                "topic `{}` is named as `{reference}` is, which answers the whole manual: \
+                 give it another name",
+                reference.topic()
             ),
             Fault::UnknownTopic { topic, topics } => {
                 write!(f, "no topic `{topic}`; the topics are: {}", list(topics))
