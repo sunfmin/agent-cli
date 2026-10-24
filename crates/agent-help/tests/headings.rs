@@ -112,6 +112,12 @@ It may refuse:
   ## Fix
 
   Raise the limit.
+
+## Usage
+
+```
+plans plan create
+```
 "
     );
 }
@@ -137,13 +143,19 @@ Set `PLANS_TOKEN` instead.
 }
 
 #[test]
-fn in_the_manual_each_heading_nests_under_its_command_or_topic() {
+fn in_the_manual_each_heading_nests_under_its_command_or_topic_with_its_usage() {
     assert_eq!(
         help().manual().unwrap(),
         "\
 # `plans`
 
 Keeps plans.
+
+## Usage
+
+```
+plans [COMMAND]
+```
 
 ## Commands
 
@@ -152,6 +164,12 @@ Keeps plans.
 #### `plans plan`
 
 Works with plans.
+
+##### Usage
+
+```
+plans plan [COMMAND]
+```
 
 #### `plans plan create`
 
@@ -180,6 +198,12 @@ It may refuse:
   ##### Fix
 
   Raise the limit.
+
+##### Usage
+
+```
+plans plan create
+```
 
 ## Topics
 
