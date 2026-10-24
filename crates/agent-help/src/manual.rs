@@ -514,30 +514,32 @@ impl Help {
 /// by index, then the rest in clap's order. Hidden ones, and clap's own
 /// `--help` and `--version`, are left out.
 fn visible(command: &Command) -> Vec<(String, &Arg)> {
-    let listed = |arg: &&Arg| {
+    let mut positional = Vec::new();
+    let mut options = Vec::new();
+    for arg in command.get_arguments() {
         let clap_s_own = matches!(
             arg.get_action(),
             ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version
         );
-        !clap_s_own && !arg.is_hide_set() && !arg.is_hide_long_help_set()
-    };
-    let mut positional: Vec<&Arg> = command.get_positionals().filter(listed).collect();
+        if clap_s_own || arg.is_hide_set() || arg.is_hide_long_help_set() {
+            continue;
+        }
+        if arg.is_positional() {
+            positional.push(arg);
+        } else {
+            options.push(arg);
+        }
+    }
     positional.sort_by_key(|arg| arg.get_index());
-    let options = command
-        .get_arguments()
-        .filter(|arg| !arg.is_positional())
-        .filter(listed);
-    positional
-        .into_iter()
-        .chain(options)
-        .map(|arg| {
-            let name = match (arg.get_short(), arg.get_long()) {
-                (Some(short), Some(_)) => format!("-{short}, {arg}"),
-                _ => arg.to_string(),
-            };
-            (name, arg)
-        })
-        .collect()
+    let mut visible = Vec::new();
+    for arg in positional.into_iter().chain(options) {
+        let name = match (arg.get_short(), arg.get_long()) {
+            (Some(short), Some(_)) => format!("-{short}, {arg}"),
+            _ => arg.to_string(),
+        };
+        visible.push((name, arg));
+    }
+    visible
 }
 
 /// `tree` and every subcommand of it, hidden ones too, depth first in
