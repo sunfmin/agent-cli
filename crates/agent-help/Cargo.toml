@@ -9,7 +9,24 @@ repository.workspace = true
 [dependencies]
 agent-help-derive = { version = "0.1.0", path = "../agent-help-derive" }
 clap = { version = "4.5", default-features = false, features = ["std", "env", "usage"] }
+flux-alloc.workspace = true
+flux-core.workspace = true
+
+[[example]]
+name = "plans"
+# Its test, `the_manual_is_whole`, runs with the crate's.
+test = true
 
 [dev-dependencies]
 clap = { version = "4.5", features = ["derive"] }
+serde_json = "1"
 trybuild = "1"
+
+# `cargo flux` (through ../../verify.sh) checks every function of this crate,
+# and ../../gate.sh fails unless none is trusted or ignored.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }

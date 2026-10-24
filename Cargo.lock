@@ -8,6 +8,9 @@ version = "0.1.0"
 dependencies = [
  "agent-help-derive",
  "clap",
+ "flux-alloc",
+ "flux-core",
+ "serde_json",
  "trybuild",
 ]
 
@@ -19,6 +22,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "agent-help-flux"
+version = "0.0.0"
+dependencies = [
+ "agent-help",
 ]
 
 [[package]]
@@ -122,6 +132,41 @@ name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
+
+[[package]]
+name = "flux-alloc"
+version = "0.1.0"
+source = "git+https://github.com/flux-rs/flux.git?rev=b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9#b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9"
+dependencies = [
+ "flux-attrs",
+ "flux-core",
+]
+
+[[package]]
+name = "flux-attrs"
+version = "0.1.0"
+source = "git+https://github.com/flux-rs/flux.git?rev=b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9#b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9"
+dependencies = [
+ "flux-attrs-impl",
+]
+
+[[package]]
+name = "flux-attrs-impl"
+version = "0.1.0"
+source = "git+https://github.com/flux-rs/flux.git?rev=b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9#b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "flux-core"
+version = "0.1.0"
+source = "git+https://github.com/flux-rs/flux.git?rev=b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9#b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9"
+dependencies = [
+ "flux-attrs",
+]
 
 [[package]]
 name = "glob"

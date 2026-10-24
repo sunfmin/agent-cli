@@ -245,3 +245,14 @@ fn a_placeholder_in_an_argument_s_help_is_checked_where_it_is_written() {
         ]
     );
 }
+
+#[test]
+fn code_blocks_include_those_of_an_argument_s_help() {
+    assert_eq!(
+        agent_help::code_blocks(&help(), "sh"),
+        [agent_help::CodeBlock {
+            at: "`<name>` of `plans create`".to_owned(),
+            code: "plans create q3\n".to_owned(),
+        }]
+    );
+}

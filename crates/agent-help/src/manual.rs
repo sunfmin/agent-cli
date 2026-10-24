@@ -1,5 +1,6 @@
 use std::fmt;
 
+use clap::builder::StyledStr;
 use clap::{Arg, ArgAction, Command};
 
 use crate::{Table, Topic, TopicRef, item};
@@ -87,6 +88,8 @@ use crate::{Table, Topic, TopicRef, item};
 ///   registered under that name: a number is written once, in code. A table's
 ///   help may name constants, but not tables. One naming nothing registered
 ///   is an error.
+/// - Inside any text, `[...](help:<topic>)` links to a topic; one naming no
+///   registered topic is an error. Two topics may not share a name.
 /// - After its text, a command's answer gives its usage, as clap writes it,
 ///   then its arguments: positional ones first, then the rest, each named as
 ///   clap's usage names it, with its help (its `long_help`, else its `help`)
@@ -99,9 +102,11 @@ use crate::{Table, Topic, TopicRef, item};
 ///   final period.
 /// - The manual gives the tool's usage and arguments after its text, and
 ///   what it says of each command is that command's answer, one heading
-///   level down (ADR 0004).
+///   level down (ADR 0005).
 /// - Hidden commands, hidden arguments, hidden values, and clap's own
 ///   `--help` and `--version` are left out of the manual.
+/// - [`check`] is the one test a tool needs to keep this manual whole, and
+///   [`code_blocks`] hands it the manual's examples to compile.
 /// - Each answer that finds faults is an [`Error`] naming every one of them.
 #[derive(Clone, Debug)]
 pub struct Help {
@@ -118,8 +123,17 @@ struct RegisteredTopic {
     markdown: &'static str,
 }
 
+impl RegisteredTopic {
+    /// Where its text is written, for a fault or a code block to name.
+    fn at(&self) -> String {
+        format!("topic `{}`", self.reference.topic())
+    }
+}
+
 /// A table, as [`Help::table`] registered it.
-#[derive(Clone, Debug)]
+// `Copy`, so the derived `Clone` copies it whole: one that clones the `fn`
+// field crashes Flux (`invalid builtin assoc reft ... Clone ... "cloned"`).
+#[derive(Clone, Copy, Debug)]
 struct RegisteredTable {
     name: &'static str,
     /// Its [`Table::markdown`].
@@ -311,6 +325,14 @@ impl Help {
         if !self.topics.is_empty() {
             manual.push_str("\n## Topics\n");
         }
+        for (i, topic) in self.topics.iter().enumerate() {
+            let name = topic.reference.topic();
+            if self.topics[..i].iter().any(|t| t.reference.topic() == name) {
+                faults.push(Fault::DuplicateTopic {
+                    topic: name.to_owned(),
+                });
+            }
+        }
         for topic in &self.topics {
             manual.push_str(&format!("\n### `{}`\n\n", topic.reference));
             manual.push_str(&self.topic_text(topic, faults));
@@ -342,83 +364,71 @@ impl Help {
         body
     }
 
-    /// A command's visible arguments as a Markdown list, positional ones
-    /// first, then the rest in clap's order: each named as clap's usage names
-    /// it, with its help, then its default, its environment variable and the
-    /// values it accepts, where set. Empty when it takes none.
+    /// A command's visible arguments as a Markdown list, in the order
+    /// [`visible`] gives: each named as clap's usage names it, with its help,
+    /// then its default, its environment variable and the values it accepts,
+    /// where set. Empty when it takes none.
     fn arguments(&self, at: &str, command: &Command, faults: &mut Faults) -> String {
-        let visible = || {
-            command.get_arguments().filter(|arg| {
-                let clap_s_own = matches!(
-                    arg.get_action(),
-                    ArgAction::Help
-                        | ArgAction::HelpShort
-                        | ArgAction::HelpLong
-                        | ArgAction::Version
-                );
-                !clap_s_own && !arg.is_hide_set() && !arg.is_hide_long_help_set()
-            })
-        };
-        let mut positional: Vec<&Arg> = visible().filter(|arg| arg.is_positional()).collect();
-        positional.sort_by_key(|arg| arg.get_index());
-        let options = visible().filter(|arg| !arg.is_positional());
-
         let mut list = String::new();
-        for arg in positional.into_iter().chain(options) {
-            let name = match (arg.get_short(), arg.get_long()) {
-                (Some(short), Some(_)) => format!("-{short}, {arg}"),
-                _ => arg.to_string(),
-            };
-            let at = format!("`{name}` of {at}");
-            let help = arg.get_long_help().or(arg.get_help());
-            let help = help.map(|help| self.expand(&help.to_string(), &at, false, faults));
-            item(
-                &mut list,
-                "",
-                &name,
-                help.as_deref().unwrap_or("").trim_end(),
-            );
-
-            let takes_values = arg.get_action().takes_values();
+        for (name, arg) in visible(command) {
+            let (help, values) = self.argument_help(&format!("`{name}` of {at}"), arg, faults);
+            item(&mut list, "", &name, &help);
             let defaults = arg.get_default_values();
-            if takes_values && !defaults.is_empty() && !arg.is_hide_default_value_set() {
+            if arg.get_action().takes_values()
+                && !defaults.is_empty()
+                && !arg.is_hide_default_value_set()
+            {
                 let defaults: Vec<_> = defaults.iter().map(|d| d.to_string_lossy()).collect();
                 list.push_str(&format!("  - Default: {}\n", self::list(&defaults)));
             }
             if let Some(env) = arg.get_env().filter(|_| !arg.is_hide_env_set()) {
                 list.push_str(&format!("  - Environment: `{}`\n", env.to_string_lossy()));
             }
-            let values: Vec<_> = arg
-                .get_possible_values()
-                .into_iter()
-                .filter(|value| !value.is_hide_set())
-                .collect();
-            if takes_values && !values.is_empty() && !arg.is_hide_possible_values_set() {
+            if !values.is_empty() {
                 list.push_str("  - Values:\n");
-                for value in values {
-                    let help = value.get_help().map(ToString::to_string);
-                    let help = help.map(|help| self.expand(&help, &at, false, faults));
-                    item(
-                        &mut list,
-                        "    ",
-                        value.get_name(),
-                        help.as_deref().unwrap_or("").trim_end(),
-                    );
+                for (value, help) in values {
+                    item(&mut list, "    ", &value, &help);
                 }
             }
         }
         list
     }
 
+    /// `arg`'s help, its `long_help` else its `help`, and each value it
+    /// accepts that the manual lists, with that value's help: placeholders
+    /// replaced, each help empty when there is none. `at` names the argument,
+    /// for a fault to name.
+    fn argument_help(
+        &self,
+        at: &str,
+        arg: &Arg,
+        faults: &mut Faults,
+    ) -> (String, Vec<(String, String)>) {
+        let mut help = |text: Option<&StyledStr>| match text {
+            Some(text) => self
+                .expand(&text.to_string(), at, false, faults)
+                .trim_end()
+                .to_owned(),
+            None => String::new(),
+        };
+        let own = help(arg.get_long_help().or(arg.get_help()));
+        let mut values = Vec::new();
+        if arg.get_action().takes_values() && !arg.is_hide_possible_values_set() {
+            for value in arg.get_possible_values() {
+                if !value.is_hide_set() {
+                    values.push((value.get_name().to_owned(), help(value.get_help())));
+                }
+            }
+        }
+        (own, values)
+    }
+
     /// A command's text, placeholders replaced, as a block that starts with
     /// a blank line and ends with a newline; empty when it has none.
     fn text(&self, at: &str, command: &Command, faults: &mut Faults) -> String {
-        let text = command.get_long_about().or(command.get_about());
-        match text.map(ToString::to_string) {
-            Some(text) if !text.trim().is_empty() => {
-                format!("\n{}\n", self.expand(&text, at, false, faults).trim_end())
-            }
-            _ => String::new(),
+        match written(command) {
+            Some(text) => format!("\n{}\n", self.expand(&text, at, false, faults).trim_end()),
+            None => String::new(),
         }
     }
 
@@ -430,7 +440,7 @@ impl Help {
                 tool: tool.to_owned(),
             });
         }
-        let at = format!("topic `{}`", topic.reference.topic());
+        let at = topic.at();
         format!(
             "{}\n",
             self.expand(topic.markdown, &at, false, faults).trim_end()
@@ -440,13 +450,22 @@ impl Help {
     /// `text` with each `{table:<name>}` and `{const:<NAME>}` replaced; `at`
     /// says where it is written, for a fault to name.
     fn expand(&self, text: &str, at: &str, in_table: bool, faults: &mut Faults) -> String {
+        for topic in links(text) {
+            if !self.topics.iter().any(|t| t.reference.topic() == topic) {
+                faults.push(Fault::UnknownLink {
+                    topic: topic.to_owned(),
+                    at: at.to_owned(),
+                    topics: self.topics.iter().map(|t| t.reference.topic()).collect(),
+                });
+            }
+        }
         let mut expanded = String::with_capacity(text.len());
         let mut rest = text;
-        while let Some(start) = rest.find('{') {
-            expanded.push_str(&rest[..start]);
-            let Some((placeholder, after)) = Placeholder::parse(&rest[start..]) else {
+        while let Some((before, inside)) = rest.split_once('{') {
+            expanded.push_str(before);
+            let Some((placeholder, after)) = Placeholder::parse(inside) else {
                 expanded.push('{');
-                rest = &rest[start + 1..];
+                rest = inside;
                 continue;
             };
             rest = after;
@@ -490,6 +509,51 @@ impl Help {
     }
 }
 
+/// `command`'s arguments the manual lists, each with its name as clap's usage
+/// names it, such as `-s, --store <PATH>` or `<NAME>`: positional ones first,
+/// by index, then the rest in clap's order. Hidden ones, and clap's own
+/// `--help` and `--version`, are left out.
+fn visible(command: &Command) -> Vec<(String, &Arg)> {
+    let listed = |arg: &&Arg| {
+        let clap_s_own = matches!(
+            arg.get_action(),
+            ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version
+        );
+        !clap_s_own && !arg.is_hide_set() && !arg.is_hide_long_help_set()
+    };
+    let mut positional: Vec<&Arg> = command.get_positionals().filter(listed).collect();
+    positional.sort_by_key(|arg| arg.get_index());
+    let options = command
+        .get_arguments()
+        .filter(|arg| !arg.is_positional())
+        .filter(listed);
+    positional
+        .into_iter()
+        .chain(options)
+        .map(|arg| {
+            let name = match (arg.get_short(), arg.get_long()) {
+                (Some(short), Some(_)) => format!("-{short}, {arg}"),
+                _ => arg.to_string(),
+            };
+            (name, arg)
+        })
+        .collect()
+}
+
+/// `tree` and every subcommand of it, hidden ones too, depth first in
+/// clap's order, each with its title, such as `plans plan create`.
+fn every(tree: &Command) -> Vec<(String, &Command)> {
+    fn walk<'a>(command: &'a Command, title: String, every: &mut Vec<(String, &'a Command)>) {
+        every.push((title.clone(), command));
+        for sub in command.get_subcommands() {
+            walk(sub, format!("{title} {}", sub.get_name()), every);
+        }
+    }
+    let mut every = Vec::new();
+    walk(tree, tree.get_name().to_owned(), &mut every);
+    every
+}
+
 /// Every visible subcommand of `tree`, depth first in clap's order, with its
 /// group.
 fn listed(tree: &Command) -> Vec<Listed<'_>> {
@@ -515,6 +579,130 @@ fn listed(tree: &Command) -> Vec<Listed<'_>> {
     listed
 }
 
+/// Checks `help` whole, the one test a tool needs for its manual: every
+/// command, hidden ones too, has text and a group, every placeholder and
+/// every `help:` link names something registered, and no two topics share a
+/// name. Fails naming every fault at once.
+///
+/// ```no_run
+/// # fn help() -> agent_help::Help { unimplemented!() }
+/// #[test]
+/// fn the_manual_is_whole() {
+///     agent_help::check(&help()).unwrap();
+/// }
+/// ```
+pub fn check(help: &Help) -> Result<(), Error> {
+    let mut faults = match help.clap() {
+        Ok(_) => Faults::default(),
+        Err(error) => Faults(error.faults),
+    };
+    for (title, command) in every(&help.tree()) {
+        if written(command).is_none() {
+            faults.push(Fault::NoText { command: title });
+        }
+    }
+    faults.or(())
+}
+
+/// Every fenced code block of `language` in `help`, as its answers show it
+/// (placeholders replaced, a table's indent removed), so a tool can compile
+/// or run the examples its manual shows: each command's in clap's order,
+/// hidden ones too, its text's then its arguments' (`at` naming the
+/// argument), then each topic's. A block's language is the first word
+/// of its info string, so `rust,no_run` is `rust`.
+pub fn code_blocks(help: &Help, language: &str) -> Vec<CodeBlock> {
+    // Faults are `check`'s to report.
+    let mut faults = Faults::default();
+    let mut texts = Vec::new();
+    for (title, command) in every(&help.tree()) {
+        let at = format!("`{title}`");
+        texts.push((at.clone(), help.text(&at, command, &mut faults)));
+        for (name, arg) in visible(command) {
+            let at = format!("`{name}` of {at}");
+            let (own, values) = help.argument_help(&at, arg, &mut faults);
+            texts.push((at.clone(), own));
+            texts.extend(values.into_iter().map(|(_, value)| (at.clone(), value)));
+        }
+    }
+    for topic in &help.topics {
+        texts.push((topic.at(), help.topic_text(topic, &mut faults)));
+    }
+    let mut blocks = Vec::new();
+    for (at, text) in texts {
+        for code in fenced(&text, language) {
+            blocks.push(CodeBlock {
+                at: at.clone(),
+                code,
+            });
+        }
+    }
+    blocks
+}
+
+/// A fenced code block of a manual, as [`code_blocks`] hands it over.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CodeBlock {
+    /// Where it is shown, such as `` `plans plan create` `` or
+    /// `` topic `sign-in` ``.
+    pub at: String,
+    /// Its lines, each ended by a newline.
+    pub code: String,
+}
+
+/// A command's text, its `long_about` else its `about`; none when blank.
+fn written(command: &Command) -> Option<String> {
+    let text = command
+        .get_long_about()
+        .or(command.get_about())?
+        .to_string();
+    (!text.trim().is_empty()).then_some(text)
+}
+
+/// The topic each `[...](help:<topic>)` in `text` names. A topic is written
+/// without whitespace; the empty one names none.
+fn links(text: &str) -> impl Iterator<Item = &str> {
+    text.split("](help:").skip(1).filter_map(|rest| {
+        let (topic, _) = rest.split_once(')')?;
+        (!topic.contains(|c: char| c.is_whitespace() || c == '(')).then_some(topic)
+    })
+}
+
+/// The code of each block fenced with backticks in `markdown` whose language
+/// is `language`, each line less the fence's indent.
+fn fenced(markdown: &str, language: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let mut lines = markdown.lines();
+    while let Some(line) = lines.next() {
+        let indent = leading(line, b' ');
+        let opening = &line[indent..];
+        let ticks = leading(opening, b'`');
+        if ticks < 3 {
+            continue;
+        }
+        let info = &opening[ticks..];
+        let mut code = String::new();
+        for line in lines.by_ref() {
+            let content = line.trim_start_matches(' ');
+            if content.trim_end().len() >= ticks && content.trim_end().chars().all(|c| c == '`') {
+                break;
+            }
+            let strip = leading(line, b' ').min(indent);
+            code.push_str(&line[strip..]);
+            code.push('\n');
+        }
+        if info.split([',', ' ']).next() == Some(language) {
+            blocks.push(code);
+        }
+    }
+    blocks
+}
+
+/// How many bytes `text` starts with that are `byte`, an ASCII byte. Counted
+/// rather than taken as the difference of two lengths, which Flux cannot bound.
+fn leading(text: &str, byte: u8) -> usize {
+    text.bytes().take_while(|&b| b == byte).count()
+}
+
 /// A command in the manual's list.
 struct Listed<'a> {
     /// The command as it is run, such as `plans plan create`.
@@ -530,10 +718,11 @@ enum Placeholder<'a> {
 }
 
 impl<'a> Placeholder<'a> {
-    /// The placeholder `text` starts with, and the text after it. A name is
-    /// one or more characters, none of them whitespace or a brace.
+    /// The placeholder whose opening brace `text` follows, and the text after
+    /// it. A name is one or more characters, none of them whitespace or a
+    /// brace.
     fn parse(text: &'a str) -> Option<(Self, &'a str)> {
-        let (kind, rest) = text.strip_prefix('{')?.split_once(':')?;
+        let (kind, rest) = text.split_once(':')?;
         let (name, after) = rest.split_once('}')?;
         if name.is_empty() || name.contains(|c: char| c.is_whitespace() || c == '{') {
             return None;
@@ -635,6 +824,21 @@ pub enum Fault {
         /// The table whose help it is in.
         at: String,
     },
+    /// A command, the tool's own or a subcommand, hidden or not, has no text.
+    NoText {
+        /// As it is run, such as `plans serve`.
+        command: String,
+    },
+    /// `[...](help:<topic>)` names no registered topic.
+    UnknownLink {
+        topic: String,
+        /// Where it is written.
+        at: String,
+        /// The topics there are.
+        topics: Vec<&'static str>,
+    },
+    /// Two topics registered under one name.
+    DuplicateTopic { topic: String },
     /// A topic's crate named a binary other than the tool's command.
     ForeignTopic { reference: TopicRef, tool: String },
     /// A command asked for that does not exist.
@@ -676,6 +880,20 @@ impl fmt::Display for Fault {
             Fault::TableInTable { table, at } => write!(
                 f,
                 "`{{table:{table}}}` in {at}: a table's help names constants, not tables"
+            ),
+            Fault::NoText { command } => write!(
+                f,
+                "`{command}` has no text: write its doc comment, and keep it as written \
+                 with `#[command(verbatim_doc_comment)]`"
+            ),
+            Fault::UnknownLink { topic, at, topics } => write!(
+                f,
+                "`help:{topic}` in {at} names no topic; the topics are: {}",
+                list(topics)
+            ),
+            Fault::DuplicateTopic { topic } => write!(
+                f,
+                "topic `{topic}` is added twice: give each topic a name of its own"
             ),
             Fault::ForeignTopic { reference, tool } => write!(
                 f,
