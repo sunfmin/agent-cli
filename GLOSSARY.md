@@ -20,6 +20,10 @@ _Avoid_: guide, page, article
 The command that shows a topic, which a tool's own messages carry instead of writing the topic's name out.
 _Avoid_: link, pointer
 
+**Topic link**:
+`[...](help:<topic>)` written inside a help, sending the reader to a topic by its name.
+_Avoid_: reference, pointer
+
 **Table**:
 A closed set of facts of one kind, such as a tool's refusal codes, whose every entry carries its help.
 _Avoid_: registry, catalog
