@@ -1,0 +1,15 @@
+[package]
+name = "agent-help-flux"
+version = "0.0.0"
+description = "A crate checked by Flux that derives agent-help's traits: what the derives generate passes Flux in the crate that derives them"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+agent-help = { path = "../agent-help" }
+
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"

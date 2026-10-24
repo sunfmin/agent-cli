@@ -21,6 +21,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-help-flux"
+version = "0.0.0"
+dependencies = [
+ "agent-help",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
