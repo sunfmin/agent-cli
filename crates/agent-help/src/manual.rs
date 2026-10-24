@@ -1,16 +1,17 @@
 use std::fmt;
 
-use clap::Command;
+use clap::builder::StyledStr;
+use clap::{Arg, ArgAction, Command};
 
-use crate::{Table, Topic, TopicRef};
+use crate::{Table, Topic, TopicRef, item};
 
 /// A tool's manual, assembled from what is written where it lives: clap's
 /// command tree, the topics and the tables. Every answer is Markdown, the
 /// text kept as its author wrote it.
 ///
-/// ```
+/// ````
 /// use agent_help::{Help, Topic};
-/// use clap::Command;
+/// use clap::{Arg, Command};
 ///
 /// agent_help::binary!("plans");
 ///
@@ -32,7 +33,14 @@ use crate::{Table, Topic, TopicRef};
 ///         .subcommand(
 ///             Command::new("create")
 ///                 .next_help_heading("Run by the agent")
-///                 .long_about("Creates a plan. It may refuse:\n\n{table:refusal}"),
+///                 .long_about("Creates a plan. It may refuse:\n\n{table:refusal}")
+///                 .arg(
+///                     Arg::new("by")
+///                         .long("by")
+///                         .default_value("1")
+///                         .env("PLANS_BY")
+///                         .help("How many plans to create."),
+///                 ),
 ///         );
 ///     let help = Help::new(tool)
 ///         .topic::<SignIn>()
@@ -46,15 +54,27 @@ use crate::{Table, Topic, TopicRef};
 /// Creates a plan. It may refuse:
 ///
 /// - `over_limit`: There are 10 plans already.
+///
+/// ### Usage
+///
+/// ```
+/// plans create [OPTIONS]
+/// ```
+///
+/// ### Arguments
+///
+/// - `--by <by>`: How many plans to create.
+///   - Default: `1`
+///   - Environment: `PLANS_BY`
 /// "
 ///     );
 ///     assert_eq!(
 ///         help.topic_help("sign-in").unwrap(),
 ///         "# `plans help sign-in`\n\nRun `plans login` once.\n"
 ///     );
-///     assert!(help.manual().unwrap().starts_with("# `plans`\n\nKeeps plans.\n\n## Commands\n"));
+///     assert!(help.manual().unwrap().starts_with("# `plans`\n\nKeeps plans.\n\n## Usage\n"));
 /// }
-/// ```
+/// ````
 ///
 /// - A command's text is its `long_about`, else its `about`. With clap's
 ///   derive, write `#[command(verbatim_doc_comment)]` so its doc comment is
@@ -70,7 +90,21 @@ use crate::{Table, Topic, TopicRef};
 ///   is an error.
 /// - Inside any text, `[...](help:<topic>)` links to a topic; one naming no
 ///   registered topic is an error. Two topics may not share a name.
-/// - Hidden commands are left out of the manual.
+/// - After its text, a command's answer gives its usage, as clap writes it,
+///   then its arguments: positional ones first, then the rest, each named as
+///   clap's usage names it, with its help (its `long_help`, else its `help`)
+///   and, where set, its default, its environment variable and the values it
+///   accepts, each value with its help. A global argument is listed on every
+///   command it reaches; a command that takes none has no arguments section.
+///   With clap's derive, write `#[arg(verbatim_doc_comment)]`, and
+///   `#[value(verbatim_doc_comment)]` on a `ValueEnum`'s variant, so the doc
+///   comment is kept as written; without it clap drops a one-line comment's
+///   final period.
+/// - The manual gives the tool's usage and arguments after its text, and
+///   what it says of each command is that command's answer, one heading
+///   level down (ADR 0005).
+/// - Hidden commands, hidden arguments, hidden values, and clap's own
+///   `--help` and `--version` are left out of the manual.
 /// - [`check`] is the one test a tool needs to keep this manual whole, and
 ///   [`code_blocks`] hands it the manual's examples to compile.
 /// - Each answer that finds faults is an [`Error`] naming every one of them.
@@ -148,7 +182,7 @@ impl Help {
     /// tree first names them), then every topic.
     pub fn manual(&self) -> Result<String, Error> {
         let mut faults = Faults::default();
-        let manual = self.whole(&mut faults);
+        let manual = self.whole(&self.tree(), &mut faults);
         faults.or(manual)
     }
 
@@ -165,13 +199,14 @@ impl Help {
             .copied()
             .collect::<Vec<_>>()
             .join(" ");
-        let mut command = &self.command;
+        let tree = self.tree();
+        let mut command = &tree;
         for name in path {
             let found = command.get_subcommands().find(|c| c.get_name() == *name);
             let Some(found) = found else {
                 return Err(Fault::UnknownCommand {
                     command: title,
-                    commands: self.listed().into_iter().map(|c| c.title).collect(),
+                    commands: listed(&tree).into_iter().map(|c| c.title).collect(),
                 }
                 .into());
             };
@@ -203,9 +238,11 @@ impl Help {
     /// start with a broken manual rather than show one.
     pub fn clap(&self) -> Result<Command, Error> {
         let mut faults = Faults::default();
-        let manual = self.whole(&mut faults);
+        let tree = self.tree();
+        let manual = self.whole(&tree, &mut faults);
         let command = self.answering(
             self.command.clone().override_help(manual),
+            &tree,
             self.command.get_name(),
             &mut faults,
         );
@@ -213,28 +250,52 @@ impl Help {
     }
 
     /// `command`'s subcommands, at every depth, each answering `--help` with
-    /// its own text.
-    fn answering(&self, mut command: Command, title: &str, faults: &mut Faults) -> Command {
-        let names: Vec<String> = command
-            .get_subcommands()
-            .map(|c| c.get_name().to_owned())
-            .collect();
-        for name in names {
-            command = command.mut_subcommand(&name, |sub| {
-                let title = format!("{title} {name}");
-                let text = self.alone(&title, &sub, faults);
-                self.answering(sub.override_help(text), &title, faults)
+    /// its own text, read from `tree`, the same command in [`Help::tree`].
+    fn answering(
+        &self,
+        mut command: Command,
+        tree: &Command,
+        title: &str,
+        faults: &mut Faults,
+    ) -> Command {
+        for built in tree.get_subcommands() {
+            command = command.mut_subcommand(built.get_name(), |sub| {
+                let title = format!("{title} {}", built.get_name());
+                let text = self.alone(&title, built, faults);
+                self.answering(sub.override_help(text), built, &title, faults)
             });
         }
         command
     }
 
-    fn whole(&self, faults: &mut Faults) -> String {
-        let root = self.command.get_name();
-        let mut manual = format!("# `{root}`\n");
-        manual.push_str(&self.text(&format!("`{root}`"), &self.command, faults));
+    /// The command tree as clap parses it, which the manual reads: global
+    /// arguments reach every command they apply to, `--help` and usage are
+    /// clap's, and no `help` subcommand is added, so only the tool's own
+    /// commands are there.
+    fn tree(&self) -> Command {
+        fn own(command: Command) -> Command {
+            let names: Vec<String> = command
+                .get_subcommands()
+                .map(|c| c.get_name().to_owned())
+                .collect();
+            let mut command = command.disable_help_subcommand(true);
+            for name in names {
+                command = command.mut_subcommand(name, own);
+            }
+            command
+        }
+        let mut tree = own(self.command.clone());
+        tree.build();
+        tree
+    }
 
-        let listed = self.listed();
+    /// The whole manual of `tree`, [`Help::tree`].
+    fn whole(&self, tree: &Command, faults: &mut Faults) -> String {
+        let root = tree.get_name();
+        let mut manual = format!("# `{root}`\n");
+        manual.push_str(&self.body(&format!("`{root}`"), tree, 2, faults));
+
+        let listed = listed(tree);
         let mut groups: Vec<&str> = Vec::new();
         for command in &listed {
             match command.group {
@@ -252,9 +313,10 @@ impl Help {
             manual.push_str(&format!("\n### {group}\n"));
             for command in listed.iter().filter(|c| c.group == Some(group)) {
                 manual.push_str(&format!("\n#### `{}`\n", command.title));
-                manual.push_str(&self.text(
+                manual.push_str(&self.body(
                     &format!("`{}`", command.title),
                     command.command,
+                    5,
                     faults,
                 ));
             }
@@ -278,36 +340,87 @@ impl Help {
         manual
     }
 
-    /// One command's answer: its heading, then its text.
+    /// One command's answer: its heading, then its body.
     fn alone(&self, title: &str, command: &Command, faults: &mut Faults) -> String {
         format!(
             "# `{title}`\n{}",
-            self.text(&format!("`{title}`"), command, faults)
+            self.body(&format!("`{title}`"), command, 2, faults)
         )
     }
 
-    /// Every visible subcommand, depth first in clap's order, with its group.
-    fn listed(&self) -> Vec<Listed<'_>> {
-        fn walk<'a>(
-            command: &'a Command,
-            title: &str,
-            group: Option<&'a str>,
-            listed: &mut Vec<Listed<'a>>,
-        ) {
-            for sub in command.get_subcommands().filter(|c| !c.is_hide_set()) {
-                let title = format!("{title} {}", sub.get_name());
-                let group = sub.get_next_help_heading().or(group);
-                listed.push(Listed {
-                    title: title.clone(),
-                    command: sub,
-                    group,
-                });
-                walk(sub, &title, group, listed);
+    /// What the manual says of one command of [`Help::tree`], under its
+    /// heading: its text, then its usage and its arguments, each under a
+    /// heading `depth` deep. Starts with a blank line and ends with a newline.
+    fn body(&self, at: &str, command: &Command, depth: usize, faults: &mut Faults) -> String {
+        let heading = "#".repeat(depth);
+        let mut body = self.text(at, command, faults);
+        let usage = command.clone().render_usage().to_string();
+        let usage = usage.strip_prefix("Usage: ").unwrap_or(&usage);
+        body.push_str(&format!("\n{heading} Usage\n\n```\n{usage}\n```\n"));
+        let arguments = self.arguments(at, command, faults);
+        if !arguments.is_empty() {
+            body.push_str(&format!("\n{heading} Arguments\n\n{arguments}"));
+        }
+        body
+    }
+
+    /// A command's visible arguments as a Markdown list, in the order
+    /// [`visible`] gives: each named as clap's usage names it, with its help,
+    /// then its default, its environment variable and the values it accepts,
+    /// where set. Empty when it takes none.
+    fn arguments(&self, at: &str, command: &Command, faults: &mut Faults) -> String {
+        let mut list = String::new();
+        for (name, arg) in visible(command) {
+            let (help, values) = self.argument_help(&format!("`{name}` of {at}"), arg, faults);
+            item(&mut list, "", &name, &help);
+            let defaults = arg.get_default_values();
+            if arg.get_action().takes_values()
+                && !defaults.is_empty()
+                && !arg.is_hide_default_value_set()
+            {
+                let defaults: Vec<_> = defaults.iter().map(|d| d.to_string_lossy()).collect();
+                list.push_str(&format!("  - Default: {}\n", self::list(&defaults)));
+            }
+            if let Some(env) = arg.get_env().filter(|_| !arg.is_hide_env_set()) {
+                list.push_str(&format!("  - Environment: `{}`\n", env.to_string_lossy()));
+            }
+            if !values.is_empty() {
+                list.push_str("  - Values:\n");
+                for (value, help) in values {
+                    item(&mut list, "    ", &value, &help);
+                }
             }
         }
-        let mut listed = Vec::new();
-        walk(&self.command, self.command.get_name(), None, &mut listed);
-        listed
+        list
+    }
+
+    /// `arg`'s help, its `long_help` else its `help`, and each value it
+    /// accepts that the manual lists, with that value's help: placeholders
+    /// replaced, each help empty when there is none. `at` names the argument,
+    /// for a fault to name.
+    fn argument_help(
+        &self,
+        at: &str,
+        arg: &Arg,
+        faults: &mut Faults,
+    ) -> (String, Vec<(String, String)>) {
+        let mut help = |text: Option<&StyledStr>| match text {
+            Some(text) => self
+                .expand(&text.to_string(), at, false, faults)
+                .trim_end()
+                .to_owned(),
+            None => String::new(),
+        };
+        let own = help(arg.get_long_help().or(arg.get_help()));
+        let mut values = Vec::new();
+        if arg.get_action().takes_values() && !arg.is_hide_possible_values_set() {
+            for value in arg.get_possible_values() {
+                if !value.is_hide_set() {
+                    values.push((value.get_name().to_owned(), help(value.get_help())));
+                }
+            }
+        }
+        (own, values)
     }
 
     /// A command's text, placeholders replaced, as a block that starts with
@@ -317,24 +430,6 @@ impl Help {
             Some(text) => format!("\n{}\n", self.expand(&text, at, false, faults).trim_end()),
             None => String::new(),
         }
-    }
-
-    /// Every command, hidden ones too, depth first in clap's order from the
-    /// tool's own, each with its title, such as `plans plan create`.
-    fn every(&self) -> Vec<(String, &Command)> {
-        fn walk<'a>(command: &'a Command, title: String, every: &mut Vec<(String, &'a Command)>) {
-            every.push((title.clone(), command));
-            for sub in command.get_subcommands() {
-                walk(sub, format!("{title} {}", sub.get_name()), every);
-            }
-        }
-        let mut every = Vec::new();
-        walk(
-            &self.command,
-            self.command.get_name().to_owned(),
-            &mut every,
-        );
-        every
     }
 
     fn topic_text(&self, topic: &RegisteredTopic, faults: &mut Faults) -> String {
@@ -414,6 +509,78 @@ impl Help {
     }
 }
 
+/// `command`'s arguments the manual lists, each with its name as clap's usage
+/// names it, such as `-s, --store <PATH>` or `<NAME>`: positional ones first,
+/// by index, then the rest in clap's order. Hidden ones, and clap's own
+/// `--help` and `--version`, are left out.
+fn visible(command: &Command) -> Vec<(String, &Arg)> {
+    let mut positional = Vec::new();
+    let mut options = Vec::new();
+    for arg in command.get_arguments() {
+        let clap_s_own = matches!(
+            arg.get_action(),
+            ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version
+        );
+        if clap_s_own || arg.is_hide_set() || arg.is_hide_long_help_set() {
+            continue;
+        }
+        if arg.is_positional() {
+            positional.push(arg);
+        } else {
+            options.push(arg);
+        }
+    }
+    positional.sort_by_key(|arg| arg.get_index());
+    let mut visible = Vec::new();
+    for arg in positional.into_iter().chain(options) {
+        let name = match (arg.get_short(), arg.get_long()) {
+            (Some(short), Some(_)) => format!("-{short}, {arg}"),
+            _ => arg.to_string(),
+        };
+        visible.push((name, arg));
+    }
+    visible
+}
+
+/// `tree` and every subcommand of it, hidden ones too, depth first in
+/// clap's order, each with its title, such as `plans plan create`.
+fn every(tree: &Command) -> Vec<(String, &Command)> {
+    fn walk<'a>(command: &'a Command, title: String, every: &mut Vec<(String, &'a Command)>) {
+        every.push((title.clone(), command));
+        for sub in command.get_subcommands() {
+            walk(sub, format!("{title} {}", sub.get_name()), every);
+        }
+    }
+    let mut every = Vec::new();
+    walk(tree, tree.get_name().to_owned(), &mut every);
+    every
+}
+
+/// Every visible subcommand of `tree`, depth first in clap's order, with its
+/// group.
+fn listed(tree: &Command) -> Vec<Listed<'_>> {
+    fn walk<'a>(
+        command: &'a Command,
+        title: &str,
+        group: Option<&'a str>,
+        listed: &mut Vec<Listed<'a>>,
+    ) {
+        for sub in command.get_subcommands().filter(|c| !c.is_hide_set()) {
+            let title = format!("{title} {}", sub.get_name());
+            let group = sub.get_next_help_heading().or(group);
+            listed.push(Listed {
+                title: title.clone(),
+                command: sub,
+                group,
+            });
+            walk(sub, &title, group, listed);
+        }
+    }
+    let mut listed = Vec::new();
+    walk(tree, tree.get_name(), None, &mut listed);
+    listed
+}
+
 /// Checks `help` whole, the one test a tool needs for its manual: every
 /// command, hidden ones too, has text and a group, every placeholder and
 /// every `help:` link names something registered, and no two topics share a
@@ -431,7 +598,7 @@ pub fn check(help: &Help) -> Result<(), Error> {
         Ok(_) => Faults::default(),
         Err(error) => Faults(error.faults),
     };
-    for (title, command) in help.every() {
+    for (title, command) in every(&help.tree()) {
         if written(command).is_none() {
             faults.push(Fault::NoText { command: title });
         }
@@ -442,16 +609,22 @@ pub fn check(help: &Help) -> Result<(), Error> {
 /// Every fenced code block of `language` in `help`, as its answers show it
 /// (placeholders replaced, a table's indent removed), so a tool can compile
 /// or run the examples its manual shows: each command's in clap's order,
-/// hidden ones too, then each topic's. A block's language is the first word
+/// hidden ones too, its text's then its arguments' (`at` naming the
+/// argument), then each topic's. A block's language is the first word
 /// of its info string, so `rust,no_run` is `rust`.
 pub fn code_blocks(help: &Help, language: &str) -> Vec<CodeBlock> {
     // Faults are `check`'s to report.
     let mut faults = Faults::default();
     let mut texts = Vec::new();
-    for (title, command) in help.every() {
+    for (title, command) in every(&help.tree()) {
         let at = format!("`{title}`");
-        let text = help.text(&at, command, &mut faults);
-        texts.push((at, text));
+        texts.push((at.clone(), help.text(&at, command, &mut faults)));
+        for (name, arg) in visible(command) {
+            let at = format!("`{name}` of {at}");
+            let (own, values) = help.argument_help(&at, arg, &mut faults);
+            texts.push((at.clone(), own));
+            texts.extend(values.into_iter().map(|(_, value)| (at.clone(), value)));
+        }
     }
     for topic in &help.topics {
         texts.push((topic.at(), help.topic_text(topic, &mut faults)));

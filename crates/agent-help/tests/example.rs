@@ -54,26 +54,60 @@ Run `plans login` once; it keeps the token in the keychain.
 Every command refuses with `not_signed_in` until then.
 ";
 
-const CREATE: &str = "\
-# `plans plan create`
+/// The global `--store`, as every command lists it.
+const STORE: &str = "\
+- `--store <PATH>`: Where the store is.
+  - Default: `./plans`
+  - Environment: `PLANS_STORE`
+";
+
+/// `plans plan create`'s answer, its headings `#` deep and their sections one
+/// deeper.
+fn create(heading: &str) -> String {
+    format!(
+        "\
+{heading} `plans plan create`
 
 Creates a plan.
 
-Answers `{\"plan\": \"<name>\"}`. It may refuse:
+Answers `{{\"plan\": \"<name>\"}}`. It may refuse:
 
 - `name_taken`: The name is taken by another plan.
 - `over_limit`: There are 10 plans already: remove one first.
-";
+
+{heading}# Usage
+
+```
+plans plan create [OPTIONS] <NAME>
+```
+
+{heading}# Arguments
+
+- `<NAME>`: The plan's name.
+{STORE}"
+    )
+}
 
 #[test]
 fn help_answers_the_whole_manual() {
-    let manual = "\
+    let create = create("####");
+    let manual = format!(
+        "\
 # `plans`
 
 Keeps plans for a team, at most 10.
 
 Every command prints one JSON object. Run `plans plan list` first.
 
+## Usage
+
+```
+plans [OPTIONS] <COMMAND>
+```
+
+## Arguments
+
+{STORE}
 ## Commands
 
 ### Run by the agent
@@ -82,25 +116,50 @@ Every command prints one JSON object. Run `plans plan list` first.
 
 Works with plans.
 
-#### `plans plan create`
+##### Usage
 
-Creates a plan.
+```
+plans plan [OPTIONS] <COMMAND>
+```
 
-Answers `{\"plan\": \"<name>\"}`. It may refuse:
+##### Arguments
 
-- `name_taken`: The name is taken by another plan.
-- `over_limit`: There are 10 plans already: remove one first.
-
+{STORE}
+{create}
 #### `plans plan list`
 
 Lists every plan.
 
+##### Usage
+
+```
+plans plan list [OPTIONS]
+```
+
+##### Arguments
+
+- `--format <FORMAT>`: How the list is written.
+  - Default: `json`
+  - Values:
+    - `json`: One JSON object.
+    - `markdown`: A Markdown table.
+{STORE}
 #### `plans help`
 
 Shows one topic of this manual, or all of it.
 
 `plans help sign-in` shows how to sign in.
 
+##### Usage
+
+```
+plans help [OPTIONS] [TOPIC]
+```
+
+##### Arguments
+
+- `[TOPIC]`: The topic, such as `sign-in`.
+{STORE}
 ### Run by the operator
 
 #### `plans serve`
@@ -109,6 +168,15 @@ Serves the plans to the team.
 
 Run it once, where the store is; it answers until stopped.
 
+##### Usage
+
+```
+plans serve [OPTIONS]
+```
+
+##### Arguments
+
+{STORE}
 ## Topics
 
 ### `plans help sign-in`
@@ -116,16 +184,31 @@ Run it once, where the store is; it answers until stopped.
 Run `plans login` once; it keeps the token in the keychain.
 
 Every command refuses with `not_signed_in` until then.
-";
-    assert_eq!(run(&["--help"]), (manual.to_owned(), true));
-    assert_eq!(run(&["help"]), (manual.to_owned(), true));
+"
+    );
+    assert_eq!(run(&["--help"]), (manual.clone(), true));
+    assert_eq!(run(&["help"]), (manual, true));
 }
 
 #[test]
 fn a_command_s_help_answers_that_command() {
+    assert_eq!(run(&["plan", "create", "--help"]), (create("#"), true));
+}
+
+#[test]
+fn an_argument_s_default_and_environment_variable_are_what_clap_uses() {
     assert_eq!(
-        run(&["plan", "create", "--help"]),
-        (CREATE.to_owned(), true)
+        run(&["plan", "list"]),
+        ("{\"store\": \"./plans\", \"plans\": []}\n".to_owned(), true)
+    );
+    let output = plans()
+        .args(["plan", "list"])
+        .env("PLANS_STORE", "/srv/plans")
+        .output()
+        .expect("the example runs");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "{\"store\": \"/srv/plans\", \"plans\": []}\n"
     );
 }
 

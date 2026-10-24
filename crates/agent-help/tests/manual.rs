@@ -90,6 +90,12 @@ Keeps plans, at most 10.
 
 Run `plans plan list` first.
 
+## Usage
+
+```
+plans [COMMAND]
+```
+
 ## Commands
 
 ### Run by the agent
@@ -97,6 +103,12 @@ Run `plans plan list` first.
 #### `plans plan`
 
 Works with plans.
+
+##### Usage
+
+```
+plans plan [COMMAND]
+```
 
 #### `plans plan create`
 
@@ -107,19 +119,43 @@ It may refuse:
 - `name_taken`: The name is taken by another plan.
 - `over_limit`: There are 10 plans already.
 
+##### Usage
+
+```
+plans plan create
+```
+
 #### `plans plan list`
 
 Lists every plan.
 
+##### Usage
+
+```
+plans plan list
+```
+
 #### `plans help`
 
 Shows a topic.
+
+##### Usage
+
+```
+plans help
+```
 
 ### Run by the operator
 
 #### `plans serve`
 
 Serves the plans.
+
+##### Usage
+
+```
+plans serve
+```
 
 ## Topics
 
@@ -153,6 +189,12 @@ fn a_nested_command_may_declare_a_group_of_its_own() {
         "\
 # `plans`
 
+## Usage
+
+```
+plans [COMMAND]
+```
+
 ## Commands
 
 ### Run by the agent
@@ -161,11 +203,23 @@ fn a_nested_command_may_declare_a_group_of_its_own() {
 
 Plans.
 
+##### Usage
+
+```
+plans plan [COMMAND]
+```
+
 ### Run by the operator
 
 #### `plans plan purge`
 
 Purges.
+
+##### Usage
+
+```
+plans plan purge
+```
 "
     );
 }
@@ -201,6 +255,12 @@ It may refuse:
 
 - `name_taken`: The name is taken by another plan.
 - `over_limit`: There are 10 plans already.
+
+## Usage
+
+```
+plans plan create
+```
 "
     );
     assert_eq!(
@@ -293,7 +353,8 @@ fn text_that_only_looks_like_a_placeholder_is_kept() {
     );
     assert_eq!(
         help.manual().unwrap(),
-        "# `plans`\n\n```rust\nlet x = {table};\nformat!(\"{const: }\")\n```\n"
+        "# `plans`\n\n```rust\nlet x = {table};\nformat!(\"{const: }\")\n```\n\n\
+         ## Usage\n\n```\nplans\n```\n"
     );
 }
 
