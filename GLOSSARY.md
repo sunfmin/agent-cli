@@ -5,8 +5,12 @@ The help of a command-line tool whose reader is an AI agent: written where each 
 ## Language
 
 **Manual**:
-Everything a tool's help says, in Markdown as written: its commands, its topics, its tables.
+Everything a tool's help says, in Markdown as written: its commands, its topics, its tables. `<binary> help all` answers it whole.
 _Avoid_: docs, man page
+
+**Index**:
+What `<binary> --help` answers: the tool's own text, then each command's line (the first line of its text) under its group, then each topic's line (the first sentence of its Markdown).
+_Avoid_: summary, table of contents
 
 **Help**:
 A fact's Markdown, as its author wrote it, for an agent to read.

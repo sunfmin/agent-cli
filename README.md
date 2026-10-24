@@ -12,9 +12,10 @@ The skill is [`skills/agent-cli/SKILL.md`](skills/agent-cli/SKILL.md).
 
 `crates/agent-help` is the library the skill writes help with: Markdown doc
 comments on the types each fact belongs to (clap's commands, an enum of
-refusal codes, a topic), assembled into one manual that answers `--help`,
-`<command> --help` and `help <topic>`, and `agent_help::check`, the one test
-that keeps it whole. `cargo doc -p agent-help --open` says how;
+refusal codes, a topic), assembled into one manual that answers `--help`
+with its index (each command's and topic's one line), `<command> --help` with
+that command, `help <topic>` with that topic and `help all` with the whole
+manual, and `agent_help::check`, the one test that keeps it whole. `cargo doc -p agent-help --open` says how;
 `crates/agent-help/examples/plans.rs` is a tool wired to it.
 
 It has no release yet: a tool depends on it from git, pinned to a commit,
