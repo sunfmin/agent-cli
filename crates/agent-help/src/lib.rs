@@ -72,10 +72,18 @@
 //!
 //! A topic is a piece of the manual that belongs to no single command; see
 //! [`Topic`].
+//!
+//! # The manual
+//!
+//! [`struct@Help`] assembles a tool's manual from clap's command tree, its
+//! topics and its tables, and answers `--help`, `<command> --help` and
+//! `help <topic>` from it. `examples/plans.rs` is a tool wired to one.
 
+mod manual;
 mod topic;
 
 pub use agent_help_derive::Help;
+pub use manual::{Error, Fault, Help};
 pub use topic::{Topic, TopicRef};
 
 /// One variant of a [`Table`]: its name and its help.
