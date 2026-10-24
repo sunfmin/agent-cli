@@ -1,0 +1,8 @@
+[workspace]
+resolver = "3"
+members = ["crates/agent-help", "crates/agent-help-derive"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/sunfmin/agent-cli"
