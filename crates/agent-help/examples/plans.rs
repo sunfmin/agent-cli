@@ -8,7 +8,7 @@
 use std::process::ExitCode;
 
 use agent_help::{Help, Topic};
-use clap::{FromArgMatches, Parser, Subcommand};
+use clap::{FromArgMatches, Parser, Subcommand, ValueEnum};
 
 agent_help::binary!("plans");
 
@@ -21,6 +21,16 @@ const MAX_PLANS: u32 = 10;
 #[derive(Parser)]
 #[command(name = "plans", verbatim_doc_comment, disable_help_subcommand = true)]
 struct Cli {
+    /// Where the store is.
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        default_value = "./plans",
+        env = "PLANS_STORE",
+        verbatim_doc_comment
+    )]
+    store: String,
     #[command(subcommand)]
     command: Command,
 }
@@ -40,6 +50,7 @@ enum Command {
     #[command(next_help_heading = "Run by the agent", verbatim_doc_comment)]
     Help {
         /// The topic, such as `sign-in`.
+        #[arg(verbatim_doc_comment)]
         topic: Option<String>,
     },
     /// Serves the plans to the team.
@@ -59,11 +70,27 @@ enum PlanCommand {
     #[command(verbatim_doc_comment)]
     Create {
         /// The plan's name.
+        #[arg(verbatim_doc_comment)]
         name: String,
     },
     /// Lists every plan.
     #[command(verbatim_doc_comment)]
-    List,
+    List {
+        /// How the list is written.
+        #[arg(long, value_enum, default_value_t = Format::Json, verbatim_doc_comment)]
+        format: Format,
+    },
+}
+
+/// How a command writes its answer.
+#[derive(Clone, Copy, ValueEnum)]
+enum Format {
+    /// One JSON object.
+    #[value(verbatim_doc_comment)]
+    Json,
+    /// A Markdown table.
+    #[value(verbatim_doc_comment)]
+    Markdown,
 }
 
 /// Why `plans` refused a request.
@@ -113,7 +140,12 @@ fn main() -> ExitCode {
         Command::Plan(PlanCommand::Create { name }) => {
             println!("{{\"plan\": \"{name}\"}}");
         }
-        Command::Plan(PlanCommand::List) => println!("{{\"plans\": []}}"),
+        Command::Plan(PlanCommand::List {
+            format: Format::Json,
+        }) => println!("{{\"store\": \"{}\", \"plans\": []}}", cli.store),
+        Command::Plan(PlanCommand::List {
+            format: Format::Markdown,
+        }) => println!("| plan |\n| --- |"),
         Command::Serve => println!("{{\"serving\": true}}"),
     }
     ExitCode::SUCCESS
