@@ -22,6 +22,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-help-flux"
+version = "0.0.0"
+dependencies = [
+ "agent-help",
+]
+
+[[package]]
 name = "anstream"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

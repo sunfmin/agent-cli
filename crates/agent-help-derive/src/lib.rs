@@ -55,24 +55,35 @@ fn table(input: &DeriveInput) -> syn::Result<TokenStream2> {
 
     let enum_name = &input.ident;
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
-    let consts = entries.iter().map(|(variant, markdown)| {
+    // Each entry is a `const` of its own, which `ENTRIES` lists and `entry`
+    // borrows (promoted to `'static`): no index, so a crate checked by Flux
+    // can derive this and have nothing to prove. The anonymous `const _`
+    // keeps those names out of the deriving crate.
+    let consts: Vec<_> = (0..entries.len())
+        .map(|i| quote::format_ident!("__AGENT_HELP_ENTRY_{i}"))
+        .collect();
+    let definitions = entries.iter().zip(&consts).map(|((variant, markdown), c)| {
         let name = variant.ident.to_string().to_snake_case();
-        quote!(::agent_help::Entry { name: #name, markdown: #markdown })
+        quote!(const #c: ::agent_help::Entry = ::agent_help::Entry { name: #name, markdown: #markdown };)
     });
-    let arms = entries.iter().enumerate().map(|(i, (variant, _))| {
+    let arms = entries.iter().zip(&consts).map(|((variant, _), c)| {
         let ident = &variant.ident;
-        quote!(Self::#ident { .. } => &<Self as ::agent_help::Table>::ENTRIES[#i])
+        quote!(Self::#ident { .. } => &#c)
     });
     Ok(quote! {
-        impl #impl_generics ::agent_help::Table for #enum_name #type_generics #where_clause {
-            const ENTRIES: &'static [::agent_help::Entry] = &[#(#consts),*];
+        const _: () = {
+            #(#definitions)*
 
-            fn entry(&self) -> &'static ::agent_help::Entry {
-                match *self {
-                    #(#arms,)*
+            impl #impl_generics ::agent_help::Table for #enum_name #type_generics #where_clause {
+                const ENTRIES: &'static [::agent_help::Entry] = &[#(#consts),*];
+
+                fn entry(&self) -> &'static ::agent_help::Entry {
+                    match *self {
+                        #(#arms,)*
+                    }
                 }
             }
-        }
+        };
     })
 }
 
