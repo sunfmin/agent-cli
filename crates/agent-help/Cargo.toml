@@ -5,3 +5,16 @@ description = "A CLI's help, written where each fact lives and assembled into on
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+
+[dependencies]
+flux-alloc.workspace = true
+flux-core.workspace = true
+
+# `cargo flux` (through ../../verify.sh) checks every function of this crate,
+# and ../../gate.sh fails unless none is trusted or ignored.
+[package.metadata.flux]
+enabled = true
+check_overflow = "strict"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }

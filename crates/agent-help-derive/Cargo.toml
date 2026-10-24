@@ -10,3 +10,9 @@ repository.workspace = true
 proc-macro = true
 
 [dependencies]
+
+# Flux does not check this crate: it rejects the registration rustc generates
+# for every proc-macro crate (`_DECLS`, "call to ...::expand1 may panic"),
+# which only `trusted` or `ignore` would get past, and the gate allows
+# neither. So this crate parses and emits tokens only; what it decides lives in
+# agent-help, which Flux checks, and its own code is covered by tests.
