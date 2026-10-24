@@ -1,0 +1,12 @@
+[package]
+name = "agent-help-derive"
+version = "0.1.0"
+description = "Derive macros for agent-help"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]

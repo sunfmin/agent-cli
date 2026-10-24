@@ -1,0 +1,7 @@
+[package]
+name = "agent-help"
+version = "0.1.0"
+description = "A CLI's help, written where each fact lives and assembled into one Markdown manual for an agent to read"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
