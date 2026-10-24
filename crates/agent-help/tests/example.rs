@@ -1,13 +1,23 @@
 //! The example tool, `examples/plans.rs`, built and run as an agent runs it.
 
+use std::fs::File;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::OnceLock;
 
 /// The example's binary, built once for every test here.
+///
+/// nextest runs each test in a process of its own, and each builds the
+/// example. Even when it is fresh, cargo unlinks the binary and links it again,
+/// so a test that started it then would find nothing there. So a process builds
+/// it holding a lock alone and runs it holding the lock shared until it exits:
+/// no build changes the binary while any test may run it.
 fn plans() -> Command {
-    static BUILT: OnceLock<PathBuf> = OnceLock::new();
-    let binary = BUILT.get_or_init(|| {
+    static BUILT: OnceLock<(File, PathBuf)> = OnceLock::new();
+    let (_, binary) = BUILT.get_or_init(|| {
+        let lock = File::create(concat!(env!("CARGO_TARGET_TMPDIR"), "/plans.lock"))
+            .expect("the lock file opens");
+        lock.lock().expect("the lock is taken alone");
         let output = Command::new(env!("CARGO"))
             .args([
                 "build",
@@ -24,7 +34,7 @@ fn plans() -> Command {
         assert!(output.status.success(), "the example builds");
         // Where the binary lands is cargo's to say, and differs between
         // cargo versions: its message about the example names it.
-        String::from_utf8(output.stdout)
+        let binary = String::from_utf8(output.stdout)
             .unwrap()
             .lines()
             .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
@@ -32,7 +42,12 @@ fn plans() -> Command {
                 message["reason"] == "compiler-artifact" && message["target"]["name"] == "plans"
             })
             .and_then(|artifact| artifact["executable"].as_str().map(PathBuf::from))
-            .expect("cargo names the example's binary")
+            .expect("cargo names the example's binary");
+        // A build that comes in between has linked the binary again before it
+        // lets the lock go.
+        lock.unlock().expect("the lock is let go");
+        lock.lock_shared().expect("the lock is shared");
+        (lock, binary)
     });
     Command::new(binary)
 }
