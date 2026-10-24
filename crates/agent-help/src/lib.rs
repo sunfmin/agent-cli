@@ -78,6 +78,12 @@
 //! [`struct@Help`] assembles a tool's manual from clap's command tree, its
 //! topics and its tables, and answers `--help`, `<command> --help` and
 //! `help <topic>` from it. `examples/plans.rs` is a tool wired to one.
+//!
+//! [`check`] is the one test a tool needs to keep its manual whole: it fails
+//! naming every command without text, every `[...](help:<topic>)` link or
+//! placeholder that names nothing, and every topic name used twice.
+//! [`code_blocks`] hands the tool the manual's fenced blocks of one language,
+//! so it can compile the examples its help shows.
 
 // Flux's refinements of the standard library: without them a slice has no
 // length Flux knows of. Both are empty outside Flux.
@@ -90,7 +96,7 @@ mod rejected;
 mod topic;
 
 pub use agent_help_derive::Help;
-pub use manual::{Error, Fault, Help};
+pub use manual::{CodeBlock, Error, Fault, Help, check, code_blocks};
 pub use topic::{Topic, TopicRef};
 
 /// One variant of a [`Table`]: its name and its help.
