@@ -1,0 +1,11 @@
+error: variant `OverLimit` has no help: write a doc comment (`///`) on it, or #[help = "..."]
+ --> tests/compile_fail/variant_without_help.rs:7:5
+  |
+7 |     OverLimit,
+  |     ^^^^^^^^^
+
+error: variant `Expired` has no help: write a doc comment (`///`) on it, or #[help = "..."]
+  --> tests/compile_fail/variant_without_help.rs:10:5
+   |
+10 |     Expired,
+   |     ^^^^^^^

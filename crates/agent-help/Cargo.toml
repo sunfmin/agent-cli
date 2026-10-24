@@ -8,3 +8,6 @@ repository.workspace = true
 
 [dependencies]
 agent-help-derive = { version = "0.1.0", path = "../agent-help-derive" }
+
+[dev-dependencies]
+trybuild = "1"
