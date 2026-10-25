@@ -126,7 +126,8 @@ its crate docs say how.
 
 ## The gate
 
-One `gate.sh` is the definition of "may land", the same locally and in CI:
+One `gate.sh` is the definition of "may land", the same wherever it runs; in a
+private repository, that is only the machine the change is made on:
 `cargo fmt --check`, `./verify.sh`, `clippy -D warnings`, `cargo nextest run`.
 It pins its toolchain and trusts nobody's `PATH`.
 
@@ -139,11 +140,18 @@ It pins its toolchain and trusts nobody's `PATH`.
 
 ## Release
 
-- Pushing tag `v<version>` releases. The tag must equal `Cargo.toml`'s version.
-- Every step is a subcommand of `packaging/release.sh`. CI only calls it.
-- Build on stable for macOS (arm64, x86_64), Linux (arm64, x86_64) and Windows
-  (x86_64). Before packaging, check each binary's arch and that `--version`
-  says the release.
+- Pushing tag `v<version>` marks a release. The tag must equal `Cargo.toml`'s
+  version.
+- The release is cut on the maintainer's Mac: `packaging/release.sh`, run at the
+  tag's commit, does every step. A private repository has no workflow; a public
+  one may run the same script from CI.
+- One Mac builds all five platforms on stable: macOS (arm64, x86_64) natively, Linux
+  (arm64, x86_64; musl) with `cargo-zigbuild`, Windows (x86_64; msvc) with
+  `cargo-xwin`. `release.sh` refuses before building when a tool or target is
+  missing, and names the line that installs it.
+- A release's tests run on the Mac, in `release.sh`.
+- Before packaging, check every binary's arch, and that `--version` says the
+  release for each one the Mac can run.
 - Install is one line per platform:
   - macOS, Linux: `brew install <owner>/tap/<name>`
   - Windows: `scoop bucket add <owner> https://github.com/<owner>/scoop-bucket`,
@@ -169,4 +177,5 @@ Module and interface comments: see `comments-first`.
 - [ ] `agent_help::check` passes in a test, and help names nothing the reader cannot open
 - [ ] Every error carries the line that fixes it
 - [ ] Killing it mid-run and running it again loses nothing
+- [ ] `packaging/release.sh`, run on the Mac at the tag's commit, cuts the release for all five platforms
 - [ ] The installed `--version` equals the tag
