@@ -13,6 +13,10 @@ export PATH RUSTUP_TOOLCHAIN
 
 cargo fmt --all --check
 
+# What verify.sh asks of the checker, tried on stand-in tools before the real
+# ones check anything: cargo-flux and z3 pinned, fixpoint of any version.
+sh tests/verify-checker.sh
+
 # Flux runs first, alone, before anything else is built: run beside the tests
 # it shares the cores with every one of them, and how long it took says more of
 # them than of it. verify.sh stops a solver query of one function past twenty

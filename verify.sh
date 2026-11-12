@@ -1,9 +1,9 @@
 #!/bin/sh
 # Checks the refinement types of every crate that enables Flux (its
 # Cargo.toml has `[package.metadata.flux]`), one crate at a time, so the last
-# summary Flux prints in each run is that crate's. Needs `cargo-flux`,
-# `fixpoint` and `z3` installed, each the one Cargo.toml pins: it refuses to
-# check with any other.
+# summary Flux prints in each run is that crate's. Needs `cargo-flux` and
+# `z3` installed, each the one Cargo.toml pins, which it refuses to check with
+# any other, and a `fixpoint` that reports its version, of no pin.
 #
 #   ./verify.sh                 check every Flux crate whole
 #   ./verify.sh first           check the functions whose path contains a name
@@ -17,22 +17,25 @@ cd "$(dirname "$0")"
 PATH="$HOME/.cargo/bin:$PATH"
 : "${RUSTUP_TOOLCHAIN:=$(rustup toolchain list | head -1 | cut -d' ' -f1)}"
 export PATH RUSTUP_TOOLCHAIN
-# The checker is the pinned one, or nothing is checked: another build of it
-# can pass or fail the same tree differently. Each tool is asked what it is,
+# cargo-flux and z3 are the pinned ones, or nothing is checked: another build
+# of either can pass or fail the same tree differently. fixpoint follows
+# liquid-fixpoint's nightly release and is pinned to nothing: the day a change
+# of fixpoint turns a gate result wrong, it is pinned again
+# (sunfmin/control#732, sunfmin/control#741). Each tool is asked what it is,
 # which is as far as this goes:
 #   cargo-flux  reports the first seven digits of the Flux revision it was
 #               built from, and they are compared to the pinned revision's.
 #               Not checked: the rest of the revision, a change made to that
 #               source before the build, and the driver and libraries in
 #               ~/.flux, which report no revision and are installed with it.
-#   fixpoint    reports its version and its whole commit: both are compared.
+#   fixpoint    reports its version and its commit, which are compared to
+#               nothing: it is required only to report them.
 #   z3          reports its version, which is compared, and nothing of its
 #               build.
 flux_rev=$(sed -n 's/^flux-core = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
-fixpoint_pin=$(sed -n 's/^fixpoint = "\(.*\)"$/\1/p' Cargo.toml)
 z3_pin=$(sed -n 's/^z3 = "\(.*\)"$/\1/p' Cargo.toml)
-if [ -z "$flux_rev" ] || [ -z "$fixpoint_pin" ] || [ -z "$z3_pin" ]; then
-    echo "verify: Cargo.toml must pin the Flux revision, fixpoint and z3, and one of them is not read from it" >&2
+if [ -z "$flux_rev" ] || [ -z "$z3_pin" ]; then
+    echo "verify: Cargo.toml must pin the Flux revision and z3, and one of them is not read from it" >&2
     exit 1
 fi
 flux_is=$(cargo flux --version 2>/dev/null | cut -d' ' -f2) || true
@@ -49,11 +52,11 @@ verify: cargo-flux is built from Flux ${flux_is:-(nothing reported)}, and Cargo.
     git clone https://github.com/flux-rs/flux && cd flux && git checkout $flux_rev && cargo xtask install
 EOF
 fi
-if [ "$fixpoint_is" != "$fixpoint_pin" ]; then
+if [ -z "$fixpoint_is" ]; then
     pinned=
     cat >&2 <<EOF
-verify: fixpoint is ${fixpoint_is:-(nothing reported)}, and Cargo.toml pins $fixpoint_pin. Install the pinned one, built at the commit in the brackets:
-    https://github.com/ucsd-progsys/liquid-fixpoint#how-to-build-and-install
+verify: fixpoint reports no version. Install liquid-fixpoint's nightly release, which is pinned to nothing:
+    https://github.com/ucsd-progsys/liquid-fixpoint/releases/tag/nightly
 EOF
 fi
 if [ "$z3_is" != "$z3_pin" ]; then
