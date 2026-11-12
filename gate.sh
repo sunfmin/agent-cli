@@ -3,15 +3,19 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# The whole gate runs on rustup's nightly, the one cargo-flux is built for,
-# whatever the shell that started it has on its PATH: a Homebrew `cargo`
-# ahead of rustup's lacks rustup's components. Flux's attributes expand to
-# nothing elsewhere, so a release still builds on stable.
+# The whole gate runs on this rustup nightly, whatever the shell that started
+# it has on its PATH: a Homebrew `cargo` ahead of rustup's lacks rustup's
+# components. Flux itself runs on the nightly its cargo-flux names, whatever
+# this one is. Flux's attributes expand to nothing elsewhere, so a release
+# still builds on stable.
 PATH="$HOME/.cargo/bin:$PATH"
 RUSTUP_TOOLCHAIN=nightly-2026-09-25
 export PATH RUSTUP_TOOLCHAIN
 
 cargo fmt --all --check
+
+# What verify.sh does with the toolchain, with a stand-in brew and cargo-flux.
+sh tests/verify.sh
 
 # Flux runs first, alone, before anything else is built: run beside the tests
 # it shares the cores with every one of them, and how long it took says more of
