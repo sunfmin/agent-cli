@@ -11,7 +11,7 @@ fn first(bytes: &[u8]) -> u8 {
     bytes[0]
 }
 
-// Arithmetic may not overflow (`check_overflow = "strict"`).
+// Arithmetic may not overflow (`check-overflow = "strict"`).
 #[flux::should_fail]
 fn sum(a: u8, b: u8) -> u8 {
     a + b

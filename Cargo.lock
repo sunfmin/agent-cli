@@ -136,7 +136,7 @@ checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
 [[package]]
 name = "flux-alloc"
 version = "0.1.0"
-source = "git+https://github.com/flux-rs/flux.git?rev=b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9#b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9"
+source = "git+https://github.com/flux-rs/flux.git?rev=ef6af17f647cf98c860e18e90c36d1f1b69849ff#ef6af17f647cf98c860e18e90c36d1f1b69849ff"
 dependencies = [
  "flux-attrs",
  "flux-core",
@@ -145,7 +145,7 @@ dependencies = [
 [[package]]
 name = "flux-attrs"
 version = "0.1.0"
-source = "git+https://github.com/flux-rs/flux.git?rev=b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9#b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9"
+source = "git+https://github.com/flux-rs/flux.git?rev=ef6af17f647cf98c860e18e90c36d1f1b69849ff#ef6af17f647cf98c860e18e90c36d1f1b69849ff"
 dependencies = [
  "flux-attrs-impl",
 ]
@@ -153,7 +153,7 @@ dependencies = [
 [[package]]
 name = "flux-attrs-impl"
 version = "0.1.0"
-source = "git+https://github.com/flux-rs/flux.git?rev=b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9#b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9"
+source = "git+https://github.com/flux-rs/flux.git?rev=ef6af17f647cf98c860e18e90c36d1f1b69849ff#ef6af17f647cf98c860e18e90c36d1f1b69849ff"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -163,7 +163,7 @@ dependencies = [
 [[package]]
 name = "flux-core"
 version = "0.1.0"
-source = "git+https://github.com/flux-rs/flux.git?rev=b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9#b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9"
+source = "git+https://github.com/flux-rs/flux.git?rev=ef6af17f647cf98c860e18e90c36d1f1b69849ff#ef6af17f647cf98c860e18e90c36d1f1b69849ff"
 dependencies = [
  "flux-attrs",
 ]

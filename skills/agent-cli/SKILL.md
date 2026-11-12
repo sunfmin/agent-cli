@@ -44,10 +44,11 @@ Every function of every pure crate is checked by Flux refinement types.
 - Refine two kinds of rule: **bounds** (never negative, never past a limit) and
   **order** (this step only after that one; this step last).
 - No exemptions. The gate reads Flux's summary and requires `0 trusted; 0 ignored`.
-- Pin Flux and `z3` in `Cargo.toml`. `verify.sh` reads the pins and refuses any
-  other checker, naming how to install the right one. `fixpoint` follows
-  liquid-fixpoint's nightly release, pinned to nothing; `verify.sh` requires
-  only that it reports its version.
+- Check with Homebrew's `sunfmin/tap/flux-toolchain`, the newest the tap has:
+  it brings its own `fixpoint` and `z3`, so pin and build none of them.
+  `verify.sh` reads the tap fresh and refuses a missing or older one, naming
+  the `brew` command that fixes it. Depend on the Flux crates at the revision
+  `brew info sunfmin/tap/flux-toolchain` names.
 - Flux attributes expand to nothing in a plain build: the gate runs nightly, the
   release builds on stable.
 - Know its edge. Flux proves what a call requires, not that the call happens:

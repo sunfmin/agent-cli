@@ -7,22 +7,16 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/sunfmin/agent-cli"
 
-# Flux, pinned to the revision `cargo-flux` is built from: ./verify.sh refuses
-# any other. Flux has no releases, and spec crates from another revision fail
-# in ways that look like the crate's own bug.
+# Flux, at the revision ./verify.sh's Flux, Homebrew's
+# sunfmin/tap/flux-toolchain, was built from while its Flux checks this tree:
+# `brew info sunfmin/tap/flux-toolchain` names it. Flux has no releases, and
+# spec crates from another revision fail in ways that look like the crate's
+# own bug.
 [workspace.dependencies]
 # Flux's refinements of the standard library: without them a slice has no
 # length Flux knows of, and an index into one goes unchecked. Both are empty
 # under a plain `cargo build`.
-flux-alloc = { git = "https://github.com/flux-rs/flux.git", rev = "b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9" }
-flux-core = { git = "https://github.com/flux-rs/flux.git", rev = "b2f3e31e17727ffe08c2efee1e7aa0bc4f0a66f9" }
+flux-alloc = { git = "https://github.com/flux-rs/flux.git", rev = "ef6af17f647cf98c860e18e90c36d1f1b69849ff" }
+flux-core = { git = "https://github.com/flux-rs/flux.git", rev = "ef6af17f647cf98c860e18e90c36d1f1b69849ff" }
 # A crate that writes specs adds `flux-rs`, the refinement attributes, here
-# at the same revision; verify.sh reads the revision from `flux-core`.
-
-# The rest of the checker ./verify.sh runs, beside the Flux revision above. It
-# refuses any other: the value is what the tool reports about itself, to
-# `z3 --version`. fixpoint is pinned to nothing: it follows liquid-fixpoint's
-# nightly release, and is pinned here again the day a change of it turns a
-# gate result wrong (sunfmin/control#732, sunfmin/control#741).
-[workspace.metadata.checker]
-z3 = "5.1.0"
+# at the same revision.
